@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/.venvPowerAnalysis/bin/python3
 
 class Consumption:
 
@@ -6,6 +6,7 @@ class Consumption:
     AVG_POWER_DRAW_MODE = 1
     MAX_POWER_DRAW_MODE = 2
 
+    ONE_SECOND = 1
     ONE_HOUR_IN_SECONDS = 3600
     HALF_HOUR_IN_SECONDS = ONE_HOUR_IN_SECONDS / 2
     QUARTER_HOUR_IN_SECONDS = ONE_HOUR_IN_SECONDS / 4
@@ -61,10 +62,35 @@ class Consumption:
             timeInSeconds (int): The duration in seconds for which the energy consumption is calculated.
 
         Returns:
-            float: The total energy consumed in Watt-hours (Wh) rounded to 3 decimal places.
+            float: The total energy consumed in Watt-hours (Wh)
         """
         energy = 0.0
         for timestep in range(timeInSeconds):
             energy += self.voltage * self.current * (self.dutyCycle / 100) * (1.0 / 3600)
 
-        return round(energy, 3)
+        return energy
+
+
+    def turn_on(self, mode):
+        """ Turns on the submodule and sets the current draw (and thus power) based on the specified mode.
+
+        Args:
+            mode (str): The power draw mode to use.
+        """
+        self.on = True
+
+        if mode == self.MIN_POWER_DRAW_MODE:
+            self.current = self.minCurrent
+        elif mode == self.AVG_POWER_DRAW_MODE:
+            self.current = self.averageCurrent
+        elif mode == self.MAX_POWER_DRAW_MODE:
+            self.current = self.maxCurrent
+
+        self.power = self.voltage * self.current
+
+
+    def turn_off(self):
+        """ Turns off the module and sets the current draw (and thus power) to zero.
+        """
+        self.on = False
+        self.current = 0.0

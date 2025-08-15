@@ -1,7 +1,8 @@
 from .Simulation import Simulation
-from .Generation import Generation
+from .BatteryPack import BatteryPack
 from .Consumption import Consumption
+from .BatteryCell import BatteryCell
 
 VERSION = "1.0.0"
 
-__all__ = ["Simulation", "Generation", "Consumption", "VERSION"]
+__all__ = ["Simulation", "BatteryPack", "BatteryCell", "Consumption", "VERSION"]

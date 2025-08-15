@@ -4,15 +4,21 @@
 import numpy as np
 
 # Internal libraries
-from Power.Generation import Generation
 from Power.Consumption import Consumption
-
+from Power.BatteryPack import BatteryPack
 
 class Simulation:
 
-    NUMPY_NPY_FILE = "BatteryDataLog.npy"
+    BATTERY_DATA_NUMPY_NPY_FILE = "BatteryDataLog.npy"
 
-    def __init__(self, powerDrawSources: list[Consumption], powerGenerationSources: list[Generation], timeInSeconds: int):
+    ONE_SECOND = 1
+    ONE_HOUR_IN_SECONDS = 3600
+    HALF_HOUR_IN_SECONDS = int(ONE_HOUR_IN_SECONDS / 2)
+    QUARTER_HOUR_IN_SECONDS = int(ONE_HOUR_IN_SECONDS / 4)
+    TEN_MINUTE_IN_SECONDS = int(ONE_HOUR_IN_SECONDS / 6)
+    FIVE_MINUTE_IN_SECONDS = int(ONE_HOUR_IN_SECONDS / 12)
+
+    def __init__(self, powerDrawSources: list[Consumption], powerGenerationSource: BatteryPack, timeInSeconds: int):
         """ Simulates the power consumption and generation of a system over a given time period.
 
         Args:
@@ -23,34 +29,44 @@ class Simulation:
             float: The total energy consumed by the submodule in Watt-hours (Wh).
         """
         self.consumers = powerDrawSources
-        self.generators = powerGenerationSources
+        self.generator = powerGenerationSource
         self.timeInSeconds = timeInSeconds
 
 
-    def run(self, powermodes: list[dict], initialBatteryPercentage: float, runTimeInSeconds: int):
+    def run(self, powermodes: list, runTimeInSeconds: int):
         """ Runs the simulation and collect data on battery charge state
+
+        Args:
+            powermodes (list): Power modes to simulate with the follwoing types [dict, duration, ..., dict, duration, dict, duration]
+            runTimeInSeconds (int): The duration in seconds for which the simulation is run.
 
         Returns:
             float: The total energy consumed by all submodule in Watt-hours (Wh).
         """
-        # Sum up total energy storage in units of Wh for all generators
-        totalEnergyStorage = sum(generator.energyCapacity for generator in self.generators)
 
         # Create NumPy array filled with initial battery percentage
-        batteryPercentage = np.full(runTimeInSeconds, initialBatteryPercentage, dtype=np.float32)
+        batteryPercentageLog = np.full(runTimeInSeconds, self.generator.soc, dtype=np.float32)
 
-        energyUsed = 0
-        currentEnergy = totalEnergyStorage
-        print(f"TimeInSeconds: {runTimeInSeconds}")
-        for i in range(runTimeInSeconds):
-            for consumer in self.consumers:
-                consumer.turn_on(powermodes[i][consumer])
-                energyUsed += consumer.real_time_energy(Consumption.ONE_SECOND)
-                currentEnergy -= energyUsed
-                currentBatteryPercentage = currentEnergy/totalEnergyStorage
-                batteryPercentage[i] = currentBatteryPercentage
+        totalPowerModeTime = 0
+        for i in range(0, len(powermodes), 2):
+            totalPowerModeTime += powermodes[i+1]
 
-        np.save(self.NUMPY_NPY_FILE, batteryPercentage)
+        if totalPowerModeTime != runTimeInSeconds:
+            print(f"Requested simulation time of {runTimeInSeconds}, doesn't match time defined in the powermodes variable")
+
+        timeIndex = 0
+        for i in range(0, len(powermodes), 2):
+            energyUsed = 0
+            timeDuration = powermodes[i+1]
+            for t in range(timeDuration):
+                for consumer in self.consumers:
+                    consumer.turn_on(powermodes[i][consumer])
+                    energyUsed += consumer.real_time_energy(Simulation.ONE_SECOND)
+                self.generator.cell.consume_energy(energyUsed / (self.generator.seriesCount * self.generator.parallelCount))
+                batteryPercentageLog[timeIndex] = round(self.generator.cell.state_of_charge(), 2)
+                timeIndex += 1
+
+        np.save(self.BATTERY_DATA_NUMPY_NPY_FILE, batteryPercentageLog)
 
 
     def print_all_sim_objects(self):
@@ -59,10 +75,9 @@ class Simulation:
         for consumer in self.consumers:
             print(f"  {consumer.__class__.__name__}.py: {consumer}")
 
-        for generator in self.generators:
-            print(f"  {generator.__class__.__name__}.py: {generator}")
+        print(f"  {self.generator.__class__.__name__}.py: {self.generator}")
 
 
     def print_numpy_file(self, start: int, numberOfDataPoints: int):
-        arr = np.load(Simulation.NUMPY_NPY_FILE)
-        print(arr[start:(start + numberOfDataPoints)])
+        arr = np.load(Simulation.BATTERY_DATA_NUMPY_NPY_FILE)
+        print(f"{arr[start:(start + numberOfDataPoints)]} has length of {len(arr)}")

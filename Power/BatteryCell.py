@@ -30,14 +30,14 @@ class BatteryCell:
         'LI_M_N2_04': 1500
     }
 
-    def __init__(self, volts, amps, energy, cRating: int, CHEMISTRY_TYPE: str):
+    def __init__(self, volts: float, amps: float, energy: float, cRating: int, CHEMISTRY_TYPE: str):
         """ Initialize a BatteryCell object.
 
         Args:
-            volts (float): The nominal voltage of the battery in Volts.
-            amps (float): The nominal current of the battery in Amps.
-            energy (float): The nominal energy of the battery in Watt-hours.
-            cRating (int): The C-rating of the battery.
+            volts (float): The nominal voltage of the battery (in Volts).
+            amps (float): The nominal current of the battery (in Amps).
+            energy (float): The nominal energy of the battery (in Watt-hours).
+            cRating (int): The C-rating of the battery (unitless)
             CHEMISTRY_TYPE (str): The chemistry type of the battery.
 
         Raises:
@@ -49,26 +49,24 @@ class BatteryCell:
         else:
             self.chemistry = CHEMISTRY_TYPE
 
+        self.cRating = cRating
+        self.totalEnergyCapacity = energy
+
         # See nominal voltages constants in BatteryCell.py
         clampledVoltage = max(min(volts, BatteryCell.CHEM_VOLTAGE[self.chemistry][-1]), BatteryCell.CHEM_VOLTAGE[self.chemistry][0])
         if clampledVoltage != volts:
             raise ValueError(f"{volts} V is out of range for a {self.chemistry} battery chemistry. Valid range is {BatteryCell.CHEM_VOLTAGE[self.chemistry][0]} to {BatteryCell.CHEM_VOLTAGE[self.chemistry][-1]}.")
         else:
-            self.currentVoltage = clampledVoltage           # Real time current flow in Volts
-            idx = (np.abs(BatteryCell.CHEM_VOLTAGE[self.chemistry]- self.currentVoltage)).argmin()
-            self.stateOfCharge = BatteryCell.CHEM_SOC[self.chemistry][idx]
-
-        self.currentAmpere = amps                       # Real time current flow in Amps
-        self.currentPower = self.currentVoltage * amps  # Units are Watts
-        self.energyCapacity = energy                    # Units are Watts-Hours
-        self.cRating = cRating                          # Unitless
+            self.currentVoltage = volts
+            self.stateOfCharge = self.state_of_charge_from_voltage(self.currentVoltage)
+            self.currentEnergy = self.stateOfCharge * self.totalEnergyCapacity
 
         self.minVoltage = BatteryCell.CHEM_VOLTAGE[CHEMISTRY_TYPE][0]
         idx = (np.abs(BatteryCell.CHEM_SOC[self.chemistry]- 50)).argmin() # 50% of CHEM_SOC arrays
         self.nominalVoltage = BatteryCell.CHEM_VOLTAGE[CHEMISTRY_TYPE][idx]
         self.maxVoltage = BatteryCell.CHEM_VOLTAGE[CHEMISTRY_TYPE][-1]
-        self.maxAmpere= cRating *  energy / self.nominalVoltage
-        self.maxPower = self.nominalVoltage * self.maxAmpere
+        self.maxAmpere= cRating *  self.totalEnergyCapacity / self.nominalVoltage  #TODO
+        self.maxPower = self.maxVoltage * self.maxAmpere
 
         self.temperature = 25.0                         # Units are Celsius
         self.health = 100                               # Units are percentage
@@ -82,17 +80,39 @@ class BatteryCell:
             str: String representation of the BatteryCell object.
         """
 
-        return f"Battery(V={self.currentVoltage}, A={self.currentAmpere}, Wh={self.energyCapacity})"
+        return f"Battery(V={self.currentVoltage}, A={self.currentAmpere}, Wh={self.totalEnergyCapacity})"
 
+    def consume_energy(self, energy):
+        self.currentEnergy -= energy
+        self.stateOfCharge = self.state_of_charge()
+
+    def energy_capacity(self) -> float:
+        """ Calculate the energy capacity left in cell based on state of charge
+
+        Returns:
+            float: The energy capacity in Watt-hours (Wh).
+        """
+
+        return self.totalEnergyCapacity * self.stateOfCharge
 
     def state_of_charge(self) -> float:
+        """ Estimate State of Charge (%) from energy
+
+        Returns:
+            float: The estimated state of charge as decomal from 0.0 to 1.0.
+        """
+
+        return (self.currentEnergy / self.totalEnergyCapacity)
+
+
+    def state_of_charge_from_voltage(self, voltage) -> float:
         """ Estimate State of Charge (%) from voltage
 
         Returns:
             float: The estimated state of charge in percentage.
         """
 
-        return float(np.interp(self.currentVoltage, BatteryCell.CHEM_VOLTAGE[self.chemistry], BatteryCell.CHEM_SOC[self.chemistry]))
+        return float(np.interp(voltage, BatteryCell.CHEM_VOLTAGE[self.chemistry], BatteryCell.CHEM_SOC[self.chemistry]))
 
 
     def recharge(self, finalSoC: float) -> None:
@@ -109,7 +129,7 @@ class BatteryCell:
             self.currentVoltage = BatteryCell.CHEM_VOLTAGE[self.chemistry][idx]
             self.currentPower = self.currentVoltage * self.currentAmpere
             self.rechargeCycleNumber += 1
-            #TODO: self.health = Math.exp((Math.log(0.8) / self.maxCycles[self.chemistry]) * self.rechargeCycleNumber)
+            self.health = math.exp((math.log(0.8) / self.CHEM_MAX_CYCLES[self.chemistry]) * self.rechargeCycleNumber)
             self.stateOfCharge = finalSoC
 
     def change_voltage(self, newVoltage):

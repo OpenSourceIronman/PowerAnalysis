@@ -6,12 +6,6 @@ class Consumption:
     AVG_POWER_DRAW_MODE = 1
     MAX_POWER_DRAW_MODE = 2
 
-    ONE_SECOND = 1
-    ONE_HOUR_IN_SECONDS = 3600
-    HALF_HOUR_IN_SECONDS = ONE_HOUR_IN_SECONDS / 2
-    QUARTER_HOUR_IN_SECONDS = ONE_HOUR_IN_SECONDS / 4
-    TEN_MINUTE_IN_SECONDS = ONE_HOUR_IN_SECONDS / 6
-    FIVE_MINUTE_IN_SECONDS = ONE_HOUR_IN_SECONDS / 12
 
     def __init__(self, name:str, volts:float, minAmps:float, avgAmps:float, maxAmps:float, duty:float):
         """ Initializes a Consumption object.
@@ -39,6 +33,7 @@ class Consumption:
         self.dutyCycle = duty                      # Units are percent (0-100%)
         self.on = False                            # Units are Boolean (True/False)
 
+        self.packSOC = 100
 
     def __str__(self):
         """ Returns a string representation of the power draw object.

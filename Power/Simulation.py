@@ -18,7 +18,7 @@ class Simulation:
     TEN_MINUTE_IN_SECONDS = int(ONE_HOUR_IN_SECONDS / 6)
     FIVE_MINUTE_IN_SECONDS = int(ONE_HOUR_IN_SECONDS / 12)
 
-    def __init__(self, powerDrawSources: list[Consumption], powerGenerationSource: BatteryPack, timeInSeconds: int):
+    def __init__(self, powerDrawSources: list[Consumption], powerGenerationSource: BatteryPack):
         """ Simulates the power consumption and generation of a system over a given time period.
 
         Args:
@@ -30,7 +30,6 @@ class Simulation:
         """
         self.consumers = powerDrawSources
         self.generator = powerGenerationSource
-        self.timeInSeconds = timeInSeconds
 
 
     def run(self, powermodes: list, runTimeInSeconds: int):
@@ -52,18 +51,21 @@ class Simulation:
             totalPowerModeTime += powermodes[i+1]
 
         if totalPowerModeTime != runTimeInSeconds:
-            print(f"Requested simulation time of {runTimeInSeconds}, doesn't match time defined in the powermodes variable")
+            raise ValueError(f"Requested simulation time of {runTimeInSeconds}, doesn't match time defined in the powermodes variable")
 
         timeIndex = 0
         for i in range(0, len(powermodes), 2):
             energyUsed = 0
+            totalCurrentDraw = 0
             timeDuration = powermodes[i+1]
             for t in range(timeDuration):
                 for consumer in self.consumers:
                     consumer.turn_on(powermodes[i][consumer])
+                    totalCurrentDraw += consumer.current
                     energyUsed += consumer.real_time_energy(Simulation.ONE_SECOND)
                 self.generator.cell.consume_energy(energyUsed / (self.generator.seriesCount * self.generator.parallelCount))
-                batteryPercentageLog[timeIndex] = round(self.generator.cell.state_of_charge(), 2)
+                self.generator.cell.update_ampere(totalCurrentDraw / self.generator.parallelCount)
+                batteryPercentageLog[timeIndex] = self.generator.cell.state_of_charge()
                 timeIndex += 1
 
         np.save(self.BATTERY_DATA_NUMPY_NPY_FILE, batteryPercentageLog)
@@ -79,5 +81,13 @@ class Simulation:
 
 
     def print_numpy_file(self, start: int, numberOfDataPoints: int):
+
+        np.set_printoptions(suppress=True)  # disables scientific notation
+        np.set_printoptions(precision=2)    # optional: sets decimal places
         arr = np.load(Simulation.BATTERY_DATA_NUMPY_NPY_FILE)
         print(f"{arr[start:(start + numberOfDataPoints)]} has length of {len(arr)}")
+
+
+    def convert_numpy_file_to_list(self, start: int, numberOfDataPoints: int):
+        arr = np.load(Simulation.BATTERY_DATA_NUMPY_NPY_FILE)
+        return arr

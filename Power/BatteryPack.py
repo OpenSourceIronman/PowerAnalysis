@@ -5,7 +5,7 @@ class BatteryPack:
     SERIES = 0
     PARALLEL = 1
 
-    def __init__(self, battery: BatteryCell, packConfiguration: list = ['2S', '1P'], loadResistance: float = 0):
+    def __init__(self, battery: BatteryCell, packConfiguration: list = ['2S', '1P']):
         self.cell = battery
         self.packConfiguration = packConfiguration
         self.seriesCount = self.parse_pack_configuration(packConfiguration[self.SERIES])
@@ -13,7 +13,7 @@ class BatteryPack:
         self.soc = battery.stateOfCharge
 
         self.currentPackVoltage = self.seriesCount * battery.currentVoltage
-        self.currentPackAmpere = min((self.parallelCount * (self.currentPackVoltage / loadResistance)), battery.maxAmpere)
+        self.currentPackAmpere = self.parallelCount * battery.currentAmpere
         self.currentPower = self.currentPackVoltage * self.currentPackAmpere  # Units are Watts
         self.packEnergyCapacity = self.seriesCount * self.parallelCount * battery.currentEnergy                    # Units are Watts-Hours
 

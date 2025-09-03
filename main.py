@@ -2,7 +2,6 @@
 
 # External libraries
 from nicegui import ui
-import numpy as np
 
 # Internal libraries
 from Simulation import Simulation
@@ -14,24 +13,27 @@ from PowerModes import PowerModes
 DEBUG_STATEMENTS_ON = True
 
 voltageInput = '3.65'
-energyInput = '5'
-cRatingInput = '10'
+energyInput = '20'
+cRatingInput = '1'
 chemistryInput = BatteryCell.LI_FE_P_O4
 packConfig = ['1S', '1P']
 
 def initialize_data(sim, powermodes: list):
+    global voltageInput
+
     numOfDataPoints = 0
     for i in range(0, len(powermodes), 2):
         numOfDataPoints += powermodes[i+1]
 
-    sim.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * numOfDataPoints
+    #sim.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * numOfDataPoints
+    sim.batteryPackPercentageLog = [sim.generator.cells.state_of_charge_from_voltage(voltageInput)] * numOfDataPoints
     sim.duration = numOfDataPoints
-    print(f"# of data points: {sim.duration}")
+
     return numOfDataPoints
 
 def set_battery_pack_configuration(voltageInput: float, energyInput: float, cRatingInput: int, CHEMISTRY: str):
     global packConfig
-    battery = BatteryCell(voltageInput, 0, energyInput, cRatingInput, CHEMISTRY)
+    battery = BatteryCell(voltageInput, energyInput, cRatingInput, CHEMISTRY)
     batteryPack = BatteryPack(battery, packConfig)
 
     return batteryPack
@@ -58,30 +60,43 @@ def set_power_modes():
     return modes
 
 def run_sim(sim):
-    global plot
+    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfig
 
-    sim.run(sim.duration)
+    print(f" Chemistry={chemistryInput}, Voltage={voltageInput}, Energy={energyInput}, CRating={cRatingInput}, PackConfig={packConfig}")
 
-    newY = sim.batteryPackPercentageLog
-    plot.figure['data'][0]['y'] = newY
-
+    plot.figure['data'][0]['y'] = sim.run(sim.duration, 95)
     plot.update()
 
-def restart_sim(sim, powermodes):
+def set_sim_params(sim, powermodes):
     global plot
 
     initialize_data(sim, powermodes)
-    newY = sim.batteryPackPercentageLog
-    plot.figure['data'][0]['y'] = newY
+    sim.generator = set_battery_pack_configuration(float(voltageInput), float(energyInput), int(cRatingInput), BatteryCell.LI_FE_P_O4)
+
+    plot.figure['data'][0]['y'] = sim.batteryPackPercentageLog
     sim.powermodes = powermodes
 
     plot.update()
+
+def set_global(name, value):
+    globals()[name] = value
+
+    print(f"Updated {name} to {value}")
+
+def update_packConfig(sVal, pVal):
+    global packConfig
+    if sVal is not None:
+        packConfig[0] = sVal
+    if pVal is not None:
+        packConfig[1] = pVal
+
+    print(f"Updated packConfig: {packConfig}")
 
 def GUI(sim: Simulation, startPoint: int, numOfDataPoints: int) -> None:
     """
         https://fonts.google.com/icons?icon.set=Material+Icons
     """
-    global energyInput, voltageInput, cRatingInput, chemistryInput, packConfig, plot
+    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfig
 
     print("Running GUI function")
     fig = {
@@ -90,7 +105,7 @@ def GUI(sim: Simulation, startPoint: int, numOfDataPoints: int) -> None:
                 'type': 'scatter',
                 'name': 'Battery Simulation',
                 'x': list(range(startPoint, startPoint + numOfDataPoints)),
-                'y': sim.batteryPackPercentageLog
+                'y': [BatteryCell.MAX_STATE_OF_CHARGE] * numOfDataPoints
             },
         ],
         'layout': { # https://plotly.com/python/reference/layout/#layout-paper_bgcolor
@@ -115,41 +130,42 @@ def GUI(sim: Simulation, startPoint: int, numOfDataPoints: int) -> None:
     plot = ui.plotly(fig).classes('w-full h-100')
 
     with ui.row().classes('w-full'):
-        ui.select(["LiFePO4", "LiCoO2", "LiMN2O4"], value=chemistryInput).classes('w-max')
+        ui.select(["LiFePO4", "LiCoO2", "LiMN2O4", "AGM", "PbA"], value=chemistryInput, on_change=lambda e: set_global("chemistryInput", e.value)).classes('w-max')
 
-        ui.input(label='Battery Cell Voltage (V)', placeholder='Sets State of Charge based on cell chemistry', value=voltageInput).classes('w-1/5')
-        ui.input(label='Battery Cell Energy (Wh)', placeholder='Energy capacity of each cell', value=energyInput).classes('w-1/5')
-        ui.input(label='C-Rating (Unitless charge / discharge rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput).classes('w-1/5')
+        ui.input(label='Battery Cell Voltage (V)', placeholder='Sets State of Charge based on cell chemistry', value=voltageInput, on_change=lambda e: set_global("voltageInput", e.value)).classes('w-1/5')
+        ui.input(label='Battery Cell Energy (Wh)', placeholder='Energy capacity of each cell', value=energyInput, on_change=lambda e: set_global("energyInput", e.value)).classes('w-1/5')
+        ui.input(label='C-Rating (Unitless charge / discharge rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/5')
 
-        sDropdown = ui.select(["1S", "2S", "3S", "4S"], value="1S")
-        pDropdown = ui.select(["1P", "2P", "3P", "4P"], value="1P")
+        sDropdown = ui.select(["1S", "2S", "3S", "4S"], value="1S",  on_change=lambda e: update_packConfig(e.value, None))
+        pDropdown = ui.select(["1P", "2P", "3P", "4P"], value="1P",  on_change=lambda e: update_packConfig(None, e.value))
         packConfig = [sDropdown.value, pDropdown.value]
 
     with ui.row().classes('w-full'):
-        ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim)).classes('justify-center w-full')
-        ui.button("Restart Simulation", icon='clear', on_click= lambda: restart_sim(sim, sim.powermodes)).classes('justify-center w-full')
+        ui.button("Confirm Simulation Parameters", icon='settings', on_click= lambda: set_sim_params(sim, sim.powermodes)).classes('justify-center w-full')
+        ui.space().classes('justify-center w-full')
+        ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim)).props('color=red').classes('justify-center w-full')
+
+
 
 
 if __name__ in {"__main__", "__mp_main__"}:
 
-    motor = Consumption("Motor", 5, 0, 1, 2, 100)
-    cpu = Consumption("CPU", 6, 0, 0.5, 5, 100)
-    camera = Consumption("Camera", 1, 0, 1, 1, 10)
+    motor = Consumption("Motor", 4, 0, 2, 3.125, 100)
+    cpu = Consumption("CPU", 2, 0, 2, 3.125, 100)
 
-    submodules = [motor, cpu, camera]
-    #TODO: set_power_modes()
-    powerModes = [{motor: Consumption.AVG_POWER_DRAW_MODE,
-                   cpu: Consumption.MIN_POWER_DRAW_MODE,
-                   camera: Consumption.MIN_POWER_DRAW_MODE}, 60 * Simulation.ONE_SECOND]
+    submodules = [motor, cpu]
 
+    powerModes = [{motor: Consumption.MAX_POWER_DRAW_MODE,
+                    cpu: Consumption.MAX_POWER_DRAW_MODE}, 3600 * Simulation.ONE_SECOND,
+                    {motor: Consumption.MAX_POWER_DRAW_MODE,
+                    cpu: Consumption.MAX_POWER_DRAW_MODE}, 3600 * Simulation.ONE_SECOND]
 
     startPoint = 0
     batteryPack = set_battery_pack_configuration(float(voltageInput), float(energyInput), int(cRatingInput), BatteryCell.LI_FE_P_O4)
     sim = Simulation(submodules, batteryPack, powerModes)
-    sim.unit_test()
 
     numOfDataPoints = initialize_data(sim, powerModes)
-    if DEBUG_STATEMENTS_ON: sim.print_all_sim_objects()
+    if DEBUG_STATEMENTS_ON: sim.print_all_sim_objects("Pre GUI")
     GUI(sim, startPoint, numOfDataPoints)
 
     ui.run(native=True, dark=True, window_size=(1920, 885), title='Battery Simulation')

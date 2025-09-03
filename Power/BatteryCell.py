@@ -82,7 +82,7 @@ class BatteryCell:
         idx = (np.abs(BatteryCell.CHEM_SOC[self.chemistry]- 50)).argmin()           # Array index in CHEM_SOC array closest to 50%
         self.nominalVoltage = BatteryCell.CHEM_VOLTAGE[CHEMISTRY_TYPE][idx]
         self.maxVoltage = BatteryCell.CHEM_VOLTAGE[CHEMISTRY_TYPE][-1]
-        self.maxAmpere= cRating *  self.totalEnergyCapacity / self.nominalVoltage   # TODO: Should nominal or current voltage be used here?
+        self.maxAmpere= cRating *  self.totalEnergyCapacity / self.nominalVoltage
         self.maxPower = self.maxVoltage * self.maxAmpere
 
         self.temperature = 25.0                         # Units are Celsius
@@ -164,16 +164,16 @@ class BatteryCell:
         self.currentEnergy -= energy
         if self.currentEnergy < 0:
             self.currentEnergy = 0.00
-        self.stateOfCharge = self.state_of_charge()
-
 
         # Array index in CHEM_SOC array closest to the current state of charge
         idx = (np.abs(BatteryCell.CHEM_SOC[self.chemistry] - self.stateOfCharge)).argmin()
         self.currentVoltage = BatteryCell.CHEM_VOLTAGE[self.chemistry][idx]
         self.currentPower = self.currentVoltage * self.currentAmpere
 
+        self.stateOfCharge = self.state_of_charge()
 
-    def recharge(self, finalSoC: float):
+
+    def recharge(self, finalSoC: float) -> None:
         """ Recharge a battery cell to the desired state of charge.
 
         Args:
@@ -213,16 +213,17 @@ class BatteryCell:
 
 
     def update_ampere(self, loadCurrentDraw: float) -> None:
-        """ Update per cell current draw and power ouput
+        """ Update per cell requested current draw and power output
 
         Args:
-            loadCurrentDraw (float): Current draw in amps for defined Consumption.py objects
+            loadCurrentDraw (float): Current draw in amps defined by the external Consumption.py object(s)
         """
-        self.currentDrawSet = True
+        self.currentDrawSet = False
         if loadCurrentDraw > self.maxAmpere:
             self.currentAmpere = self.maxAmpere
             raise ValueError(f"Current draw of {loadCurrentDraw} exceeds maximum limit of {self.maxAmpere} for the battery cell(s)")
         else:
+            self.currentDrawSet = True
             self.currentAmpere = loadCurrentDraw
 
         self.currentPower = self.currentVoltage * self.currentAmpere

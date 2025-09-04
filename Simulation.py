@@ -35,7 +35,7 @@ class Simulation:
         self.powermodes = modes
         self.experimentDuration = self.calculate_duration(modes)
         self.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * self.experimentDuration
-        print(self.batteryPackPercentageLog)
+        #print(self.batteryPackPercentageLog)
 
     def calculate_duration(self, modes: list) -> int:
         totalDuration = 0
@@ -57,10 +57,10 @@ class Simulation:
         self.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * self.experimentDuration
 
         if self.experimentDuration < runTimeInSeconds:
-            raise ValueError(f"Requested simulation time of {runTimeInSeconds}, is more than time defined in the powermodes variable")
+            raise ValueError(f"Requested simulation time of {runTimeInSeconds}, is more than time defined in the powermodes variable.")
 
         if voltageRegulatorEfficiency < 25 or voltageRegulatorEfficiency > 99:
-            raise ValueError("Voltage regulator efficiency must be between 25% and 99%")
+            raise ValueError("Voltage regulator efficiency must be between 25% and 99%, unless you have a very bad or physics breaking regulator :)")
 
         timeIndex = 0
         totalElaspedTime = 0
@@ -75,9 +75,14 @@ class Simulation:
                 totalCurrentDraw = 0
                 energyUsed = 0
                 for consumer in self.consumers:
-                    consumer.turn_on(self.powermodes[i][consumer])
-                    totalCurrentDraw += consumer.current
-                    energyUsed += consumer.real_time_energy(Simulation.ONE_SECOND)
+
+                    if self.powermodes[i] == BatteryCell.RECHARGE:
+                        #print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i+1]}")
+                        self.generator.cells.recharge(self.powermodes[i+1])
+                    else:
+                        consumer.turn_on(self.powermodes[i][consumer])
+                        totalCurrentDraw += consumer.current
+                        energyUsed += consumer.real_time_energy(Simulation.ONE_SECOND)
 
                 #print(f"Update Ampere Draw: {totalCurrentDraw / self.generator.parallelCount}")
                 self.generator.cells.update_ampere(totalCurrentDraw / self.generator.parallelCount)
@@ -93,6 +98,7 @@ class Simulation:
                     raise ValueError(f"Warning: Total power draw of {totalPowerDraw} Watts, exceeds battery pack capacity of {effectivePowerOutput} Watts")
 
                 self.batteryPackPercentageLog[timeIndex] = self.generator.cells.state_of_charge()
+                #print(f"Battery Pack Percentage: {self.batteryPackPercentageLog[timeIndex]}")
                 timeIndex += 1
 
             totalElaspedTime += stepsToRun
@@ -125,9 +131,12 @@ if __name__ == "__main__":
     submodules = [motor, cpu]
 
     powerModes = [{motor: Consumption.MAX_POWER_DRAW_MODE,
-                   cpu: Consumption.MAX_POWER_DRAW_MODE}, 3600 * Simulation.ONE_SECOND,
-                  {motor: Consumption.MAX_POWER_DRAW_MODE,
-                   cpu: Consumption.MAX_POWER_DRAW_MODE}, 3600 * Simulation.ONE_SECOND]
+                   cpu: Consumption.MAX_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+                  {motor: Consumption.MIN_POWER_DRAW_MODE,
+                   cpu: Consumption.AVG_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+                  {motor: Consumption.MIN_POWER_DRAW_MODE,
+                   cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+                  BatteryCell.RECHARGE, 100]
 
     battery = BatteryCell(3.65, 20, 1, BatteryCell.LI_FE_P_O4)
     batteryPack = BatteryPack(battery, ['1P','2S'])
@@ -135,5 +144,5 @@ if __name__ == "__main__":
     simulation = Simulation(submodules, batteryPack, powerModes)
     simulation.print_all_sim_objects("Starting")
 
-    log = simulation.run(7200 * Simulation.ONE_SECOND, 90)
+    log = simulation.run(3600 * Simulation.ONE_SECOND, 90)
     simulation.print_all_sim_objects("Ending")

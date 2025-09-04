@@ -1,22 +1,25 @@
 #!/usr/bin/python3
 
 # External libraries
-from nicegui import ui
+from nicegui import Tailwind, ui
 
 # Internal libraries
 from Simulation import Simulation
+from PowerModes import PowerModes
 from Power.Consumption import Consumption
 from Power.BatteryCell import BatteryCell
 from Power.BatteryPack import BatteryPack
-from PowerModes import PowerModes
+
 
 DEBUG_STATEMENTS_ON = True
 
+# Global variables
 voltageInput = '3.65'
 energyInput = '20'
-cRatingInput = '1'
+cRatingInput = '10'
 chemistryInput = BatteryCell.LI_FE_P_O4
 packConfig = ['1S', '1P']
+efficiencyInput = '95'
 
 def initialize_data(sim, powermodes: list):
     global voltageInput
@@ -25,7 +28,6 @@ def initialize_data(sim, powermodes: list):
     for i in range(0, len(powermodes), 2):
         numOfDataPoints += powermodes[i+1]
 
-    #sim.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * numOfDataPoints
     sim.batteryPackPercentageLog = [sim.generator.cells.state_of_charge_from_voltage(voltageInput)] * numOfDataPoints
     sim.duration = numOfDataPoints
 
@@ -60,23 +62,34 @@ def set_power_modes():
     return modes
 
 def run_sim(sim):
-    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfig
+    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfig, efficiencyInput, errorLabel
 
     print(f" Chemistry={chemistryInput}, Voltage={voltageInput}, Energy={energyInput}, CRating={cRatingInput}, PackConfig={packConfig}")
+    plot.figure['data'][0]['y'] = sim.run(sim.duration, int(efficiencyInput))
 
-    plot.figure['data'][0]['y'] = sim.run(sim.duration, 95)
     plot.update()
 
 def set_sim_params(sim, powermodes):
-    global plot
+    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfig, efficiencyInput, errorLabel
+
+    if errorLabel.visible:
+        errorLabel.visible = False
 
     initialize_data(sim, powermodes)
-    sim.generator = set_battery_pack_configuration(float(voltageInput), float(energyInput), int(cRatingInput), BatteryCell.LI_FE_P_O4)
 
-    plot.figure['data'][0]['y'] = sim.batteryPackPercentageLog
-    sim.powermodes = powermodes
+    try:
+        sim.generator = set_battery_pack_configuration(float(voltageInput), float(energyInput), int(cRatingInput), str(chemistryInput))
+        plot.figure['data'][0]['y'] = sim.batteryPackPercentageLog
 
-    plot.update()
+    except ValueError as e:
+        print(f"{e.__cause__} Run time errror occured")
+        errorLabel.visible = True
+        errorLabel.set_text(f"ERROR: {e}")
+        plot.figure['data'][0]['y'] = [sim.generator.cells.state_of_charge_from_voltage(voltageInput)] * sim.duration
+
+    finally:
+        sim.powermodes = powermodes
+        plot.update()
 
 def set_global(name, value):
     globals()[name] = value
@@ -96,7 +109,7 @@ def GUI(sim: Simulation, startPoint: int, numOfDataPoints: int) -> None:
     """
         https://fonts.google.com/icons?icon.set=Material+Icons
     """
-    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfig
+    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfig, efficiencyInput, errorLabel
 
     print("Running GUI function")
     fig = {
@@ -135,15 +148,23 @@ def GUI(sim: Simulation, startPoint: int, numOfDataPoints: int) -> None:
         ui.input(label='Battery Cell Voltage (V)', placeholder='Sets State of Charge based on cell chemistry', value=voltageInput, on_change=lambda e: set_global("voltageInput", e.value)).classes('w-1/5')
         ui.input(label='Battery Cell Energy (Wh)', placeholder='Energy capacity of each cell', value=energyInput, on_change=lambda e: set_global("energyInput", e.value)).classes('w-1/5')
         ui.input(label='C-Rating (Unitless charge / discharge rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/5')
+        ui.input(label='Efficiency (%)', placeholder='DC/DC Voltage Regulator Efficiency', value=efficiencyInput, on_change=lambda e: set_global("efficiencyInput", e.value)).classes('w-1/5')
+
 
         sDropdown = ui.select(["1S", "2S", "3S", "4S"], value="1S",  on_change=lambda e: update_packConfig(e.value, None))
         pDropdown = ui.select(["1P", "2P", "3P", "4P"], value="1P",  on_change=lambda e: update_packConfig(None, e.value))
         packConfig = [sDropdown.value, pDropdown.value]
 
     with ui.row().classes('w-full'):
-        ui.button("Confirm Simulation Parameters", icon='settings', on_click= lambda: set_sim_params(sim, sim.powermodes)).classes('justify-center w-full')
+        ui.button("Confirm Parameters & Reset Simulation", icon='settings', on_click= lambda: set_sim_params(sim, sim.powermodes)).props('color=orange').classes('justify-center w-full')
         ui.space().classes('justify-center w-full')
-        ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim)).props('color=red').classes('justify-center w-full')
+        ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim)).props('color=green').classes('justify-center w-full')
+
+        redLabelStyle = Tailwind().text_color('red-600').font_weight('bold')
+        errorLabel = ui.label('Label C').classes('text-center w-full text-lg')
+        errorLabel.visible = False
+        redLabelStyle.apply(errorLabel)
+
 
 
 
@@ -156,9 +177,12 @@ if __name__ in {"__main__", "__mp_main__"}:
     submodules = [motor, cpu]
 
     powerModes = [{motor: Consumption.MAX_POWER_DRAW_MODE,
-                    cpu: Consumption.MAX_POWER_DRAW_MODE}, 3600 * Simulation.ONE_SECOND,
-                    {motor: Consumption.MAX_POWER_DRAW_MODE,
-                    cpu: Consumption.MAX_POWER_DRAW_MODE}, 3600 * Simulation.ONE_SECOND]
+                   cpu: Consumption.MAX_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+                  {motor: Consumption.MIN_POWER_DRAW_MODE,
+                   cpu: Consumption.AVG_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+                  {motor: Consumption.MIN_POWER_DRAW_MODE,
+                   cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+                  BatteryCell.RECHARGE, 100]
 
     startPoint = 0
     batteryPack = set_battery_pack_configuration(float(voltageInput), float(energyInput), int(cRatingInput), BatteryCell.LI_FE_P_O4)

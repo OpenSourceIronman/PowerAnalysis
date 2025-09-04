@@ -6,6 +6,7 @@ import numpy as np
 class BatteryCell:
 
     MAX_STATE_OF_CHARGE = 100.0       # Units are in perentage
+    RECHARGE = "RECHARGE"
 
     # Battery cell chemistry types
     LI_FE_P_O4 = 'LiFePO4'  # Lithium Iron Phosphate
@@ -183,8 +184,8 @@ class BatteryCell:
             ValueError: If requested recharge state in equal to or less then current battery state of charge
         """
         #print(f"Recharging... {self.stateOfCharge} upto {finalSoC}")
-        if self.stateOfCharge >= finalSoC:
-            raise ValueError("Battery already at or above the desired state of recharge.")
+        if self.stateOfCharge > BatteryCell.MAX_STATE_OF_CHARGE:
+            raise ValueError("Can't recharge battery cell above 100%")
         else:
             # Array index in CHEM_SOC array closest to the desired final state of charge
             idx = (np.abs(BatteryCell.CHEM_SOC[self.chemistry]- finalSoC)).argmin()

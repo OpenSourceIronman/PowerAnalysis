@@ -143,14 +143,18 @@ class BatteryCell:
         return (self.currentEnergy / self.totalEnergyCapacity) * 100
 
 
-    def state_of_charge_from_voltage(self, voltage) -> float:
+    def state_of_charge_from_voltage(self, voltage: float) -> float:
         """ Estimated State of Charge (%) from the cell voltage level
 
         Returns:
             float: The estimated state of charge in percentage from 0% to 100%
         """
+        voltageString = str(voltage)
 
-        return float(np.interp(voltage, BatteryCell.CHEM_VOLTAGE[self.chemistry], BatteryCell.CHEM_SOC[self.chemistry]))
+        if "." not in voltageString:
+            raise ValueError("Voltage must contain at least one decimal place")
+        else:
+            return float(np.interp(float(voltage), BatteryCell.CHEM_VOLTAGE[self.chemistry], BatteryCell.CHEM_SOC[self.chemistry]))
 
 
     def consume_energy(self, energy: float) -> None:
@@ -181,11 +185,15 @@ class BatteryCell:
             finalSoC (float): The desired final state of charge
 
         Raises:
-            ValueError: If requested recharge state in equal to or less then current battery state of charge
+            ValueError: If requested recharge state is greater then 100%, or equal to or less then current battery state of charge
         """
         #print(f"Recharging... {self.stateOfCharge} upto {finalSoC}")
         if self.stateOfCharge > BatteryCell.MAX_STATE_OF_CHARGE:
             raise ValueError("Can't recharge battery cell above 100%")
+
+        elif self.stateOfCharge >= finalSoC:
+            raise ValueError(f"Requested State of Recharge ({finalSoC}%), is equal to or less than ({round(self.stateOfCharge, 2)}%).")
+
         else:
             # Array index in CHEM_SOC array closest to the desired final state of charge
             idx = (np.abs(BatteryCell.CHEM_SOC[self.chemistry]- finalSoC)).argmin()

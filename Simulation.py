@@ -1,7 +1,4 @@
-#!/.venvPowerAnalysis/bin/python3
-
-# External libraries
-import numpy as np
+#!/usr/bin/python3
 
 # Internal libraries
 from Power.Consumption import Consumption
@@ -9,8 +6,6 @@ from Power.BatteryPack import BatteryPack
 from Power.BatteryCell import BatteryCell
 
 class Simulation:
-
-    BATTERY_DATA_NUMPY_NPY_FILE = "BatteryDataLog.npy"
 
     ONE_SECOND = 1
     ONE_HOUR_IN_SECONDS = 3600
@@ -35,47 +30,87 @@ class Simulation:
         self.powermodes = modes
         self.experimentDuration = self.calculate_duration(modes)
         self.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * self.experimentDuration
-        #print(self.batteryPackPercentageLog)
+
+
+    def initialize_data(self, voltageInput: float):
+        """ Initialize data logging list for battery charge state
+
+        Args:
+            voltageInput (float): Initial voltage from GUI (and thus state of charge) to start the simulation.
+        """
+        self.batteryPackPercentageLog = [self.generator.cells.state_of_charge_from_voltage(voltageInput)] * self.experimentDuration
+
 
     def calculate_duration(self, modes: list) -> int:
+        """ Calculate the total duration of a simulation experiment based on the "Power Modes" data structure
+
+        Args:
+            modes (list): List of power modes to run eash submodule and their durations
+
+        Returns:
+            int: Total duration of the simulation in seconds
+        """
         totalDuration = 0
         for i in range(0, len(modes), 2):
             totalDuration += modes[i+1]
 
         return totalDuration
 
-    def run(self, runTimeInSeconds: int, voltageRegulatorEfficiency: int):
-        """ Runs the simulation and collect data on battery charge state
+
+    def valid_dc_dc_voltage_regulator_efficiency(self, efficiencyInput: int) -> bool:
+        """ Validate the efficiency of a DC to DC voltage regulator between battery pack and all submodules
+
+        Args:
+            efficiencyInput (int): The rough efficiency of a DC to DC voltage regulator between battery pack all submodules
+
+        Returns:
+            bool: True if the efficiency is valid, False otherwise
+        """
+        isValid = False
+
+        # No power conversion is 100% (that is physics breaking) and most linear regulator are better then 25%
+        if efficiencyInput < 25 or efficiencyInput > 99:
+            isValid = False
+            raise ValueError("DC-DC voltage regulator efficiency must be > 24% and < 100%.")
+        else:
+            isValid = True
+
+        return isValid
+
+
+    def run(self, runTimeInSeconds: int, voltageRegulatorEfficiency: int) -> list:
+        """ Runs the simulation and collects data on battery charge state
 
         Args:
             runTimeInSeconds (int): The duration in seconds for which the simulation is run.
-            voltageRegulatorEfficiency (int): The efficiency of the voltage regulator in percentage from 25% to 99%
+            voltageRegulatorEfficiency (int): Rough efficiency of a DC to DC voltage regulator (see Simulation.valid_dc_dc_voltage_regulator_efficiency() for valid values)
 
         Returns:
-            NOTHING
+            list: Battery charge state data calculated during a simulation run.
         """
         self.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * self.experimentDuration
 
         if self.experimentDuration < runTimeInSeconds:
             raise ValueError(f"Requested simulation time of {runTimeInSeconds}, is more than time defined in the powermodes variable.")
 
-        if voltageRegulatorEfficiency < 25 or voltageRegulatorEfficiency > 99:
-            raise ValueError("Voltage regulator efficiency must be between 25% and 99%, unless you have a very bad or physics breaking regulator :)")
 
-        timeIndex = 0
-        totalElaspedTime = 0
+        # Initialize timeIndex & totalElaspedTime to 1 at start of the first power mode to log state of charge before sim starts
+        timeIndex = 1
+        totalElaspedTime = 1
+
+        # Every even index in the powermodes list data structure defines a time length in seconds or recharge percentage
         for i in range(0, len(self.powermodes), 2):
-            energyUsed = 0
             timeDuration = self.powermodes[i+1]
 
-            # Only simulate until we hit runTimeInSeconds
-            stepsToRun = min(timeDuration, runTimeInSeconds - totalElaspedTime)
+            # Allow For Loop to exit early if "runTimeInSecond"s is reached, before "timeDuration" defined in powermodes ends
+            timeStepsToRun = min(timeDuration, runTimeInSeconds - totalElaspedTime)
 
-            for t in range(stepsToRun):
+            for _ in range(timeStepsToRun):
                 totalCurrentDraw = 0
                 energyUsed = 0
                 for consumer in self.consumers:
 
+                    # Determine if "powermodes" data structure defines a charging or power consuming cycle
                     if self.powermodes[i] == BatteryCell.RECHARGE:
                         #print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i+1]}")
                         self.generator.cells.recharge(self.powermodes[i+1])
@@ -101,7 +136,7 @@ class Simulation:
                 #print(f"Battery Pack Percentage: {self.batteryPackPercentageLog[timeIndex]}")
                 timeIndex += 1
 
-            totalElaspedTime += stepsToRun
+            totalElaspedTime += timeStepsToRun
             if totalElaspedTime > runTimeInSeconds:
                 break
 
@@ -109,6 +144,11 @@ class Simulation:
 
 
     def print_all_sim_objects(self, adjective: str):
+        """ Prints all sub-objects instances within a Simulation.py object with their respective classes names.
+
+        Args:
+            adjective (str): Useful adjective to describe the state of all the simulation submodules at time of print() statement.
+        """
         print(f"{adjective} Simulation SubModules:")
 
         for consumer in self.consumers:
@@ -116,13 +156,6 @@ class Simulation:
 
         print(f"    {self.generator.__class__.__name__}.py: {self.generator}")
 
-
-    def print_numpy_file(self, start: int, numberOfDataPoints: int):
-
-        np.set_printoptions(suppress=True)  # disables scientific notation
-        np.set_printoptions(precision=2)    # optional: sets decimal places
-        arr = np.load(Simulation.BATTERY_DATA_NUMPY_NPY_FILE)
-        print(f"{arr[start:(start + numberOfDataPoints)]} has length of {len(arr)}")
 
 if __name__ == "__main__":
     motor = Consumption("Motor", 4, 0, 2, 3.125, 100)
@@ -138,7 +171,7 @@ if __name__ == "__main__":
                    cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
                   BatteryCell.RECHARGE, 100]
 
-    battery = BatteryCell(3.65, 20, 1, BatteryCell.LI_FE_P_O4)
+    battery = BatteryCell(3.65, 9, 1, BatteryCell.LI_FE_P_O4)
     batteryPack = BatteryPack(battery, ['1P','2S'])
 
     simulation = Simulation(submodules, batteryPack, powerModes)

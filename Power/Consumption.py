@@ -6,7 +6,6 @@ class Consumption:
     AVG_POWER_DRAW_MODE = 1
     MAX_POWER_DRAW_MODE = 2
 
-
     def __init__(self, name: str, volts: float, minAmps: float, avgAmps: float, maxAmps: float, duty: float):
         """ Initializes a Consumption object with it turned on by default.
 

@@ -3,10 +3,13 @@
 # Standard libraries
 from dataclasses import dataclass, field
 from typing import Dict
+import csv
 
 # Internal libraries
 from Simulation import Simulation
 from Power.Consumption import Consumption
+from Power.BatteryCell import BatteryCell
+
 
 @dataclass
 class PowerModes:
@@ -23,41 +26,118 @@ class PowerModes:
                     parts.append(f"{name}: 'AVG_POWER_DRAW_MODE'")
                 elif powerDrawMode == Consumption.MAX_POWER_DRAW_MODE:
                     parts.append(f"{name}: 'MAX_POWER_DRAW_MODE'")
-            return f"PowerMode({self.duration} seconds of {parts})"
+            return f"Running {parts} for {self.duration} seconds"
+
 
     def add_submodule(self, name: str, powerDrawMode: int = Consumption.MIN_POWER_DRAW_MODE) -> None:
         """ Add """
         self.submodules[name] = powerDrawMode
 
-    def initialize_power_modes(self, cvsInput):
+
+    def csv_initialization(self, csvFilename: str) -> list:
+        """ Initialize power modes from a .csv file
+
+        Args:
+            csvFilename (str): Filename of .csv file containing power modes
+            Example 0th row of .csv file: "Duration, Submodule Name #1, Current Power Draw Mode #1, ..., Submodule Name #N, Current Power Draw Mode #N"
+            Example 1st row of .csv file: "100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE"
+            Example 2nd row of .csv file: "200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE"
+
+        """
         modes = []
 
+        with open(csvFilename, newline="") as f:
+                reader = csv.reader(f)
+                rowNumber = 0
+                for rowData in reader:
+                    if rowNumber == 0:
+                        pass            # Ignore header row with column names
+                    else:
+                        # Determine if the row represents a recharge to specific SoC or a power mode duration
+                        timeDurationOrRecharge = rowData[0].strip()
+                        if timeDurationOrRecharge == "RECHARGE":
+                            soc = int(rowData[1].strip())
+                            modes.append(PowerModes(duration= 0))
+                            modes[rowNumber-1].add_submodule("RECHARGE", soc)
+                        else:
+                            timeDuration = int(timeDurationOrRecharge)
+                            modes.append(PowerModes(duration= timeDuration * Simulation.ONE_SECOND))
 
-        # TODO: Use a .csv file to set power modes
-        # Example 1st row of .csv file: "100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE"
-        # Example 2nd row of .csv file: "200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE"
+                            for i in range(1, len(rowData), 2):
+                                device = rowData[i].strip()
+                                POWER_DRAW_MODE = rowData[i+1].strip()
+                                modes[rowNumber-1].add_submodule(device, self.convert_to_int(POWER_DRAW_MODE))
 
-        cvsList = cvsRowInput.split(',')
-        for i in range(1, len(cvsList), 2):
-            name = cvsList[i]
-            mode = cvsList[i+1]
-            dict = {name: mode}
-            self.add_submodule(name, mode)
+                    rowNumber += 1
 
-        mode1 = PowerModes(duration=100 * Simulation.ONE_SECOND)
+        return modes
+
+
+    def convert_to_int(self, mode: str):
+        """ Converts a string representation of a power draw mode to an integer.
+
+        Args:
+            mode (str): A CONSTANT string representation of the power draw mode.
+
+        Returns:
+            int: The integer representation of the power draw mode.
+
+        Raises:
+            ValueError: If the input string is not a valid power draw mode.
+        """
+        if mode == "MIN_POWER_DRAW_MODE":
+            return 0
+        elif mode == "AVG_POWER_DRAW_MODE":
+            return 1
+        elif mode == "MAX_POWER_DRAW_MODE":
+            return 2
+        else:
+            raise ValueError(f"Invalid power draw mode string value of: {mode}, please check Consumption.py for CONSTANT values")
+
+
+    def convert_to_string(self, mode: int):
+        """ Converts an integer representation of a power draw mode to a string.
+
+        Args:
+            mode (int): The Enum like integer representation of the power draw mode.
+
+        Returns:
+            str: A CONSTANT string representation of the power draw mode.
+
+        Raises:
+            ValueError: If the input integer is not a valid power draw mode.
+        """
+        if mode == 0:
+            return "MIN_POWER_DRAW_MODE"
+        elif mode == 1:
+            return "AVG_POWER_DRAW_MODE"
+        elif mode == 2:
+            return "MAX_POWER_DRAW_MODE"
+        else:
+            raise ValueError(f"Invalid power draw mode integer value of: {mode}, please check Consumption.py for CONSTANT values")
+
+
+if __name__ == "__main__":
+        manualModes = []
+
+        mode1 = PowerModes(duration=3600 * Simulation.ONE_SECOND)
         mode1.add_submodule("Motor")
         mode1.add_submodule("CPU")
         mode1.add_submodule("Camera")
         mode1.add_submodule("LED")
         mode1.add_submodule("GPS")
-        modes.append(mode1)
+        manualModes.append(mode1)
 
-        mode2 = PowerModes(duration=200 * Simulation.ONE_SECOND)
+        mode2 = PowerModes(duration=3600 * Simulation.ONE_SECOND)
         mode2.add_submodule("Motor", Consumption.AVG_POWER_DRAW_MODE)
         mode2.add_submodule("CPU", Consumption.MAX_POWER_DRAW_MODE)
         mode2.add_submodule("Camera")
         mode2.add_submodule("LED")
         mode2.add_submodule("GPS")
-        modes.append(mode2)
+        manualModes.append(mode2)
 
-        return modes
+        print(manualModes)
+
+        data = PowerModes()
+        powerModes = data.csv_initialization("PowerModes.csv")
+        print(powerModes)

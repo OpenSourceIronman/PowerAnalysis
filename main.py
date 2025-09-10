@@ -24,6 +24,14 @@ packConfigInput = ['1S', '1P']
 efficiencyInput = '95'
 saveNumber = 1
 
+csvHelp = """
+Duration, Submodule Name #1, Current Power Draw Mode #1, ... , Submodule Name #N, Current Power Draw Mode #N
+
+100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
+
+200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
+"""
+
 def set_battery_pack_parameters(voltageInput: float, energyInput: float, cRatingInput: int, CHEMISTRY_INPUT: str, packConfigInput: list) -> BatteryPack:
     """ Create a new battery pack object with user input values from the GUI.
 
@@ -195,19 +203,32 @@ def GUI(sim: Simulation) -> None:
 
     plot = ui.plotly(fig).classes('w-full h-100')
 
-    with ui.row().classes('w-full'):
+
+    with ui.dialog() as dialog, ui.card().classes("w-max"):#.classes("w-[900px] max-w-[95%]"):  # 👈 make dialog wider:
+        ui.label("Example .csv file structure").classes("text-xl font-bold")
+        ui.label(csvHelp).classes("text-sm whitespace-pre-wrap")  # preserve formatting
+        ui.button("Close", on_click=dialog.close).classes("w-full")
+
+    with ui.row().classes('justify-center w-full'):
         ui.select(["LiFePO4", "LiCoO2", "LiMN2O4", "AGM", "PbA"], value=chemistryInput, on_change=lambda e: set_global("chemistryInput", e.value)).classes('w-max')
 
-        ui.input(label='Single Battery Cell Voltage (V)', placeholder='Sets State of Charge (SoC) based on cell chemistry', value=voltageInput, on_change=lambda e: set_global("voltageInput", e.value)).classes('w-1/5')
-        ui.input(label='Single Battery Cell Energy (Wh)', placeholder='Energy capacity of each cell', value=energyInput, on_change=lambda e: set_global("energyInput", e.value)).classes('w-1/5')
-        ui.input(label='C-Rating (Unitless charge / discharge rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/5')
-        ui.input(label='DC/DC Efficiency (%)', placeholder='DC/DC Voltage Regulator Efficiency', value=efficiencyInput, on_change=lambda e: set_global("efficiencyInput", e.value)).classes('w-1/5')
+        ui.input(label='Single Battery Cell Voltage (V)', placeholder='Sets State of Charge % based on cell chemistry', value=voltageInput, on_change=lambda e: set_global("voltageInput", e.value)).classes('w-1/6')
+        ui.input(label='Single Battery Cell Energy (Wh)', placeholder='Energy capacity of each cell', value=energyInput, on_change=lambda e: set_global("energyInput", e.value)).classes('w-1/6')
+        ui.input(label='C-Rating (Unitless charge / discharge rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/6')
+        ui.input(label='DC/DC Efficiency (%)', placeholder='DC/DC Voltage Regulator Efficiency', value=efficiencyInput, on_change=lambda e: set_global("efficiencyInput", e.value)).classes('w-1/6')
 
         sDropdown = ui.select(["1S", "2S", "3S", "4S", "5S", "6S"], value="1S",  on_change=lambda e: update_pack_config(e.value))
         pDropdown = ui.select(["1P", "2P", "3P", "4P", "5P", "6P"], value="1P",  on_change=lambda e: update_pack_config(e.value))
         packConfig = [sDropdown.value, pDropdown.value]
 
-    with ui.row().classes('w-full'):
+
+
+
+
+
+    with ui.row().classes('justify-center w-full'):
+        file = ui.upload(label="Upload PowerModes.csv file to define submodules that consume power in this simulation", on_upload=lambda e: ui.notify(f'Uploaded {e.name}')).props('accept=.csv').classes('w-1/2')
+
         ui.button("Confirm Parameters & Reset Graph", icon='settings', on_click= lambda: set_sim_params(sim)).props('color=orange').classes('justify-center w-full')
         ui.space().classes('justify-center w-full')
         ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim)).props('color=green').classes('justify-center w-full')
@@ -219,6 +240,11 @@ def GUI(sim: Simulation) -> None:
         errorLabel = ui.label('').classes('text-center w-full text-lg')
         errorLabel.visible = False
         redLabelStyle.apply(errorLabel)
+
+        ui.space().classes('justify-center w-full')
+        helpButton = ui.button("Help", icon='help',  on_click=dialog.open).props('color=red').classes('w-1/4 h-14')
+
+
 
 
 if __name__ in {"__main__", "__mp_main__"}:
@@ -243,4 +269,4 @@ if __name__ in {"__main__", "__mp_main__"}:
 
     GUI(sim)
 
-    ui.run(native=True, dark=True, window_size=(1920, 885), title='Battery Pack Simulation', on_air=False)
+    ui.run(native=True, dark=True, window_size=(1920, 1080), title='Battery Pack Simulation', on_air=None)

@@ -185,14 +185,14 @@ class BatteryCell:
             finalSoC (float): The desired final state of charge
 
         Raises:
-            ValueError: If requested recharge state is greater then 100%, or equal to or less then current battery state of charge
+            ValueError: If requested recharge state is greater then 100%, or less then current battery state of charge
         """
         #print(f"Recharging... {self.stateOfCharge} upto {finalSoC}")
-        if self.stateOfCharge > BatteryCell.MAX_STATE_OF_CHARGE:
+        if finalSoC > BatteryCell.MAX_STATE_OF_CHARGE:
             raise ValueError("Can't recharge battery cell above 100%")
 
-        elif self.stateOfCharge >= finalSoC:
-            raise ValueError(f"Requested State of Recharge ({finalSoC}%), is equal to or less than ({round(self.stateOfCharge, 2)}%).")
+        if finalSoC < self.stateOfCharge:
+            raise ValueError(f"Requested State of Recharge ({finalSoC}%), is equal to or less than current state of charge ({round(self.stateOfCharge, 2)}%).")
 
         else:
             # Array index in CHEM_SOC array closest to the desired final state of charge
@@ -207,6 +207,7 @@ class BatteryCell:
                 self.rechargeCycleNumber += 1
 
             self.stateOfCharge = finalSoC
+
 
 
     def change_voltage(self, newVoltage: float) -> None:

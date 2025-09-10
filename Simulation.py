@@ -112,7 +112,7 @@ class Simulation:
 
                     # Determine if "powermodes" data structure defines a charging or power consuming cycle
                     if self.powermodes[i] == BatteryCell.RECHARGE:
-                        #print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i+1]}")
+                        print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i+1]}")
                         self.generator.cells.recharge(self.powermodes[i+1])
                     else:
                         consumer.turn_on(self.powermodes[i][consumer])

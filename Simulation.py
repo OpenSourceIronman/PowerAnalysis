@@ -1,5 +1,8 @@
 #!/usr/bin/python3
 
+# Standard libraries
+import math
+
 # Internal libraries
 from Power.Consumption import Consumption
 from Power.BatteryPack import BatteryPack
@@ -53,7 +56,7 @@ class Simulation:
         totalDuration = 0
         for i in range(0, len(modes), 2):
             totalDuration += modes[i+1]
-
+        print(f"Total duration: {totalDuration} seconds")
         return totalDuration
 
 
@@ -88,13 +91,11 @@ class Simulation:
         Returns:
             list: Battery charge state data calculated during a simulation run.
         """
-        self.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * self.experimentDuration
-
         if self.experimentDuration < runTimeInSeconds:
             raise ValueError(f"Requested simulation time of {runTimeInSeconds}, is more than time defined in the powermodes variable.")
 
-
-        # Initialize timeIndex & totalElaspedTime to 1 at start of the first power mode to log state of charge before sim starts
+        # Set 1st data point of graph based on GUI text box voltage input to log State of Charge before sim starts
+        self.batteryPackPercentageLog[0] = int(self.generator.cells.stateOfCharge)
         timeIndex = 1
         totalElaspedTime = 1
 
@@ -102,18 +103,32 @@ class Simulation:
         for i in range(0, len(self.powermodes), 2):
             timeDuration = self.powermodes[i+1]
 
-            # Allow For Loop to exit early if "runTimeInSecond"s is reached, before "timeDuration" defined in powermodes ends
+            # Allow "For Loop" to exit early, if "runTimeInSecond"s is reached, before "timeDuration" defined in a powermodes ends.
+            # Causes the simulation to stop based on higher priority GUI time input, instead of powermode durations.
             timeStepsToRun = min(timeDuration, runTimeInSeconds - totalElaspedTime)
 
             for _ in range(timeStepsToRun):
+                # Reset variables for next iteration of all power consumers
                 totalCurrentDraw = 0
                 energyUsed = 0
                 for consumer in self.consumers:
 
                     # Determine if "powermodes" data structure defines a charging or power consuming cycle
-                    if self.powermodes[i] == BatteryCell.RECHARGE:
-                        print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i+1]}")
-                        self.generator.cells.recharge(self.powermodes[i+1])
+                    if "RECHARGE" in self.powermodes[i]:
+                        #print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i]["RECHARGE"]}")
+                        minTimeToRecharge = int(((self.generator.cells.totalEnergyCapacity - self.generator.cells.currentEnergy) / (self.generator.cells.maxPower)) * 3600)
+                        requestedRechargeTime = self.powermodes[i+1]
+                        startingSoc = self.generator.cells.state_of_charge()
+                        if minTimeToRecharge <= requestedRechargeTime:
+                            #self.generator.cells.recharge(self.powermodes[i]["RECHARGE"])
+                            rechargeStep = (self.powermodes[i]["RECHARGE"] - startingSoc) / requestedRechargeTime
+                            self.generator.cells.recharge(startingSoc + rechargeStep)
+                            # TODO: SoC(t) = SoC{max} - (SoC{max} - SoC{0}) e^(-t/tau)
+                            #socMax = self.powermodes[i]["RECHARGE"]
+                            #self.generator.cells.recharge(socMax - (socMax- self.batteryPackPercentageLog[0])* math.exp(-requestedRechargeTime/math.tau))
+                        else:
+                            raise ValueError(f"Requested recharge time of {requestedRechargeTime} seconds is too fast!")
+
                     else:
                         consumer.turn_on(self.powermodes[i][consumer])
                         totalCurrentDraw += consumer.current

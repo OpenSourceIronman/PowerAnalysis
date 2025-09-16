@@ -2,35 +2,53 @@
 
 # External libraries
 import sqlite3
+from typing import BinaryIO
 from datetime import datetime
 from nicegui import Tailwind, ui
 
+from AppKit import NSApplication, NSApplicationActivationPolicyRegular, NSImage
+import os
+
 # Internal libraries
 from Simulation import Simulation
-#TODO: from PowerModes import PowerModes
+from PowerModes import PowerModes
 from Power.Consumption import Consumption
 from Power.BatteryCell import BatteryCell
 from Power.BatteryPack import BatteryPack
 
 
+# Global variables initial values for GUI and debugging
 DEBUG_STATEMENTS_ON = False
 
-# Global variables initial values for GUI and database table saving
 voltageInput = '3.65'
 energyInput = '5'
 cRatingInput = '10'
 chemistryInput = BatteryCell.LI_FE_P_O4
 packConfigInput = ['1S', '1P']
 efficiencyInput = '95'
-saveNumber = 1
+powerModesInput = []
 
-csvHelp = """
-Duration, Submodule Name #1, Current Power Draw Mode #1, ... , Submodule Name #N, Current Power Draw Mode #N
+csvHelp ="""
+Duration, Name #1, Power Draw Mode #1, ... , ..., Name #N, Power Draw Mode #N
 
 100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
 
 200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
+
+400, RECHARGE, 99
 """
+
+def set_app_dock_icon():
+    #https://pypi.org/project/atomac/
+    # Get or create the shared NSApplication instance
+    app = NSApplication.sharedApplication()
+    app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+
+    icon_path = os.path.expanduser('~/Users/earth/Pictures/StrongBoxLogo.png')  # change to your icon path
+    if os.path.exists(icon_path):
+        img = NSImage.alloc().initWithContentsOfFile_(icon_path)
+        NSApp.setApplicationIconImage_(img)
+
 
 def set_battery_pack_parameters(voltageInput: float, energyInput: float, cRatingInput: int, CHEMISTRY_INPUT: str, packConfigInput: list) -> BatteryPack:
     """ Create a new battery pack object with user input values from the GUI.
@@ -106,6 +124,54 @@ def set_sim_params(sim: Simulation) -> None:
         plot.update()
 
 
+def process_csv_upload(content: BinaryIO): # -> list:
+    """ Read uploaded .csv content and process rows.
+
+    Args:
+        content (BinaryIO): The uploaded CSV content.
+
+    Returns:
+        list: The processed rows.
+    """
+    global powerModesInput
+    data = PowerModes()
+    powerModesObjList = data.csv_initialization("PowerModes.csv")
+    #print(f"1st Power Mode Submodules: {powerModesObjList[2].submodules}")
+    #print(f"1st Power Mode Duration: {powerModesObjList[2].duration}")
+    powerModesInput = []
+    for powerMode in powerModesObjList:
+        powerModesInput.append(powerMode.submodules)
+        powerModesInput.append(powerMode.duration)
+        #print(f"Power Mode Submodules: {powerMode.submodules}")
+        #print(f"Power Mode Duration: {powerMode.duration}")
+
+    print(powerModesInput)
+    #return convert_power_modes(powerModesObjList)
+
+
+def convert_power_modes(parsed_list):
+    """Convert parsed PowerModes list into declarative powerModes structure."""
+    powerModes = []
+
+    for entry in parsed_list:
+        # RECHARGE case
+        if 'RECHARGE' in entry.submodules:
+            powerModes.append("BatteryCell.RECHARGE")
+            continue
+
+        # Build submodule→mode mapping
+        mapping = {}
+        for name, mode_value in entry.submodules.items():
+            sub = submodules_map[name]
+            mapping[sub] = Consumption.Mode(mode_value)
+
+        # Append dict + duration
+        powerModes.append(mapping)
+        powerModes.append(f"{entry.duration} * Simulation.ONE_SECOND")
+
+    return powerModes
+
+
 def save_data(sim: Simulation) -> None:
     """ Save sim.batteryPackPercentageLog list to auto incrementing tables based on date and time in a SQlite database
 
@@ -156,7 +222,7 @@ def update_pack_config(newValue: str) -> None:
 
 
 def GUI(sim: Simulation) -> None:
-    """ Define the NiceGUI user interface (plotly graph, text inputs, dropdowns, and buttons)
+    """ Define the NiceGUI user interface (plotly graph, text inputs, dropdowns, file upload, and buttons)
 
         NiceGUI framework from https://nicegui.io/
         Icons from https://fonts.google.com/icons?icon.set=Material+Icons
@@ -203,10 +269,9 @@ def GUI(sim: Simulation) -> None:
 
     plot = ui.plotly(fig).classes('w-full h-100')
 
-
     with ui.dialog() as dialog, ui.card().classes("w-max"):#.classes("w-[900px] max-w-[95%]"):  # 👈 make dialog wider:
         ui.label("Example .csv file structure").classes("text-xl font-bold")
-        ui.label(csvHelp).classes("text-sm whitespace-pre-wrap")  # preserve formatting
+        ui.label(csvHelp).classes("text-md whitespace-pre-wrap")  # preserve formatting
         ui.button("Close", on_click=dialog.close).classes("w-full")
 
     with ui.row().classes('justify-center w-full'):
@@ -214,7 +279,7 @@ def GUI(sim: Simulation) -> None:
 
         ui.input(label='Single Battery Cell Voltage (V)', placeholder='Sets State of Charge % based on cell chemistry', value=voltageInput, on_change=lambda e: set_global("voltageInput", e.value)).classes('w-1/6')
         ui.input(label='Single Battery Cell Energy (Wh)', placeholder='Energy capacity of each cell', value=energyInput, on_change=lambda e: set_global("energyInput", e.value)).classes('w-1/6')
-        ui.input(label='C-Rating (Unitless charge / discharge rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/6')
+        ui.input(label='C-Rating (Charge / Discharge Rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/6')
         ui.input(label='DC/DC Efficiency (%)', placeholder='DC/DC Voltage Regulator Efficiency', value=efficiencyInput, on_change=lambda e: set_global("efficiencyInput", e.value)).classes('w-1/6')
 
         sDropdown = ui.select(["1S", "2S", "3S", "4S", "5S", "6S"], value="1S",  on_change=lambda e: update_pack_config(e.value))
@@ -222,14 +287,10 @@ def GUI(sim: Simulation) -> None:
         packConfig = [sDropdown.value, pDropdown.value]
 
 
-
-
-
-
     with ui.row().classes('justify-center w-full'):
-        file = ui.upload(label="Upload PowerModes.csv file to define submodules that consume power in this simulation", on_upload=lambda e: ui.notify(f'Uploaded {e.name}')).props('accept=.csv').classes('w-1/2')
+        ui.upload(label="Upload PowerModes.csv file to define submodules that consume power in this simulation", on_upload=lambda e: process_csv_upload(e.content), auto_upload=True, on_rejected=lambda: ui.notify('File Rejected, select and upload the "PowerModes.csv" file only!')).props('accept=PowerModes.csv color=orange').classes('w-1/2')
 
-        ui.button("Confirm Parameters & Reset Graph", icon='settings', on_click= lambda: set_sim_params(sim)).props('color=orange').classes('justify-center w-full')
+        ui.button("Confirm Parameters, Reset Graph, & Reset Error Messages ", icon='settings', on_click= lambda: set_sim_params(sim)).props('color=orange').classes('justify-center w-full')
         ui.space().classes('justify-center w-full')
         ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim)).props('color=green').classes('justify-center w-full')
         ui.space().classes('justify-center w-full')
@@ -242,9 +303,7 @@ def GUI(sim: Simulation) -> None:
         redLabelStyle.apply(errorLabel)
 
         ui.space().classes('justify-center w-full')
-        helpButton = ui.button("Help", icon='help',  on_click=dialog.open).props('color=red').classes('w-1/4 h-14')
-
-
+        ui.button("Help", icon='help',  on_click=dialog.open).props('color=red').classes('w-1/4 h-14')
 
 
 if __name__ in {"__main__", "__mp_main__"}:
@@ -260,13 +319,14 @@ if __name__ in {"__main__", "__mp_main__"}:
                    cpu: Consumption.AVG_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
                   {motor: Consumption.MIN_POWER_DRAW_MODE,
                    cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
-                  BatteryCell.RECHARGE,                   20]
+                  {BatteryCell.RECHARGE: 99.0},           800 * Simulation.ONE_SECOND]
 
     batteryPack = set_battery_pack_parameters(float(voltageInput), float(energyInput), int(cRatingInput), str(chemistryInput), list(packConfigInput))
     sim = Simulation(submodules, batteryPack, powerModes)
     sim.initialize_data(float(voltageInput))
     if DEBUG_STATEMENTS_ON: sim.print_all_sim_objects("Pre GUI")
 
+    #set_app_dock_icon()
     GUI(sim)
 
     ui.run(native=True, dark=True, window_size=(1920, 1080), title='Battery Pack Simulation', on_air=None)

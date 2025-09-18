@@ -35,7 +35,7 @@ Duration, Name #1, Power Draw Mode #1, ... , ..., Name #N, Power Draw Mode #N
 
 200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
 
-400, RECHARGE, 99
+800, RECHARGE, 99
 """
 
 def set_app_dock_icon():
@@ -47,7 +47,7 @@ def set_app_dock_icon():
     icon_path = os.path.expanduser('~/Users/earth/Pictures/StrongBoxLogo.png')  # change to your icon path
     if os.path.exists(icon_path):
         img = NSImage.alloc().initWithContentsOfFile_(icon_path)
-        NSApp.setApplicationIconImage_(img)
+        app.setApplicationIconImage_(img)
 
 
 def set_battery_pack_parameters(voltageInput: float, energyInput: float, cRatingInput: int, CHEMISTRY_INPUT: str, packConfigInput: list) -> BatteryPack:
@@ -117,8 +117,8 @@ def set_sim_params(sim: Simulation) -> None:
                 badValue = "'    '"
             errorLabel.set_text(f"CONFIG ERROR: You entered {badValue}, which is not a valid integer value.")
         else:
-            errorLabel.set_text(f"ERROR: {e}")
-        plot.figure['data'][0]['y'] = [sim.generator.cells.state_of_charge_from_voltage(float(voltageInput))] * sim.experimentDuration
+            errorLabel.set_text(f"CONFIG ERROR: {e}")
+        #TODO REMOVE? plot.figure['data'][0]['y'] = [sim.generator.cells.state_of_charge_from_voltage(float(voltageInput))] * sim.experimentDuration
 
     finally:
         plot.update()
@@ -267,6 +267,11 @@ def GUI(sim: Simulation) -> None:
         'tickvals': [v for v in range(120, sim.experimentDuration, 120)],
     })
 
+    fig['layout']['yaxis'].update({
+        'tickmode': 'array',
+        'tickvals': list(range(0, int(BatteryCell.MAX_STATE_OF_CHARGE + 1), 10)),
+    })
+
     plot = ui.plotly(fig).classes('w-full h-100')
 
     with ui.dialog() as dialog, ui.card().classes("w-max"):#.classes("w-[900px] max-w-[95%]"):  # 👈 make dialog wider:
@@ -319,7 +324,7 @@ if __name__ in {"__main__", "__mp_main__"}:
                    cpu: Consumption.AVG_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
                   {motor: Consumption.MIN_POWER_DRAW_MODE,
                    cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
-                  {BatteryCell.RECHARGE: 99.0},           800 * Simulation.ONE_SECOND]
+                  {BatteryCell.RECHARGE: 50.0},            400 * Simulation.ONE_SECOND]
 
     batteryPack = set_battery_pack_parameters(float(voltageInput), float(energyInput), int(cRatingInput), str(chemistryInput), list(packConfigInput))
     sim = Simulation(submodules, batteryPack, powerModes)

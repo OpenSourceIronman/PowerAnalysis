@@ -1,418 +1,631 @@
-diff --git a/BatteryPackPercentageData.db b/BatteryPackPercentageData.db
-index cb8d4b9..49d58f9 100644
-Binary files a/BatteryPackPercentageData.db and b/BatteryPackPercentageData.db differ
 diff --git a/Power/BatteryCell.py b/Power/BatteryCell.py
-index b552393..7401f6d 100644
+index 7401f6d..669c8d5 100644
 --- a/Power/BatteryCell.py
 +++ b/Power/BatteryCell.py
-@@ -178,12 +178,15 @@ class BatteryCell:
-         self.stateOfCharge = self.state_of_charge()
- 
- 
--    def recharge(self, finalSoC: float) -> None:
-+    def recharge(self, finalSoC: float):
-         """ Recharge a battery cell to the desired state of charge.
- 
+@@ -167,7 +167,7 @@ class BatteryCell:
+             raise ValueError("Battery cell current draw not set in BatteryCell.update_ampere() before Simulator.run() called.")
+
+         self.currentEnergy -= energy
+-        if self.currentEnergy < 0:
++        if self.currentEnergy < 0.00:
+             self.currentEnergy = 0.00
+
+         # Array index in CHEM_SOC array closest to the current state of charge
+@@ -184,9 +184,6 @@ class BatteryCell:
          Args:
              finalSoC (float): The desired final state of charge
- 
-+        Returns:
-+            int: The minimum time required to recharge the battery cell ti desired final SoC in seconds
-+
+
+-        Returns:
+-            int: The minimum time required to recharge the battery cell ti desired final SoC in seconds
+-
          Raises:
              ValueError: If requested recharge state is greater then 100%, or less then current battery state of charge
          """
-@@ -192,7 +195,7 @@ class BatteryCell:
-             raise ValueError("Can't recharge battery cell above 100%")
- 
-         if finalSoC < self.stateOfCharge:
--            raise ValueError(f"Requested State of Recharge ({finalSoC}%), is equal to or less than current state of charge ({round(self.stateOfCharge, 2)}%).")
-+            raise ValueError(f"Requested State of Recharge ({finalSoC}%), is less than current state of charge ({round(self.stateOfCharge, 2)}%).")
- 
+@@ -198,6 +195,8 @@ class BatteryCell:
+             raise ValueError(f"Requested State of Recharge ({finalSoC}%), is less than current state of charge ({round(self.stateOfCharge, 2)}%).")
+
          else:
++            self.stateOfCharge = finalSoC
++            self.currentEnergy = (finalSoC/ 100.0) * self.totalEnergyCapacity
              # Array index in CHEM_SOC array closest to the desired final state of charge
-@@ -209,7 +212,6 @@ class BatteryCell:
-             self.stateOfCharge = finalSoC
- 
- 
+             idx = (np.abs(BatteryCell.CHEM_SOC[self.chemistry]- finalSoC)).argmin()
+             self.currentVoltage = BatteryCell.CHEM_VOLTAGE[self.chemistry][idx]
+@@ -209,18 +208,16 @@ class BatteryCell:
+             if self.stateOfCharge <= 50:
+                 self.rechargeCycleNumber += 1
+
+-            self.stateOfCharge = finalSoC
 -
+
      def change_voltage(self, newVoltage: float) -> None:
          """ Change voltage directly without simulating a recharge cycle
- 
-diff --git a/PowerModes.csv b/PowerModes.csv
-index cf1e352..01d90a3 100644
---- a/PowerModes.csv
-+++ b/PowerModes.csv
-@@ -1,4 +1,4 @@
--Duration, Submodule Name, Current Power Draw Mode
-+Duration, Name #1, Power Draw Mode #1, ... , ..., Name #N, Power Draw Mode #N
- 100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
- 200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
--RECHARGE, 100
-+800, RECHARGE, 99
-diff --git a/PowerModes.py b/PowerModes.py
-index ab2e144..e72d3af 100644
---- a/PowerModes.py
-+++ b/PowerModes.py
-@@ -17,16 +17,18 @@ class PowerModes:
-     duration : int = Simulation.ONE_SECOND
- 
-     def __str__(self) -> str:
--            """Custom string formatting: show 0 as a constant string."""
--            parts = []
--            for name, powerDrawMode in self.submodules.items():
--                if powerDrawMode == Consumption.MIN_POWER_DRAW_MODE:
--                    parts.append(f"{name}: 'MIN_POWER_DRAW_MODE'")
--                elif powerDrawMode == Consumption.AVG_POWER_DRAW_MODE:
--                    parts.append(f"{name}: 'AVG_POWER_DRAW_MODE'")
--                elif powerDrawMode == Consumption.MAX_POWER_DRAW_MODE:
--                    parts.append(f"{name}: 'MAX_POWER_DRAW_MODE'")
--            return f"Running {parts} for {self.duration} seconds"
-+        """Custom string formatting: show 0 as a constant string."""
-+        parts = []
-+
-+        for name, powerDrawMode in self.submodules.items():
-+            if powerDrawMode == Consumption.MIN_POWER_DRAW_MODE:
-+                parts.append(f"{name}: 'MIN_POWER_DRAW_MODE'")
-+            elif powerDrawMode == Consumption.AVG_POWER_DRAW_MODE:
-+                parts.append(f"{name}: 'AVG_POWER_DRAW_MODE'")
-+            elif powerDrawMode == Consumption.MAX_POWER_DRAW_MODE:
-+                parts.append(f"{name}: 'MAX_POWER_DRAW_MODE'")
-+
-+        return f"Running {parts} for {self.duration} seconds"
- 
- 
-     def add_submodule(self, name: str, powerDrawMode: int = Consumption.MIN_POWER_DRAW_MODE) -> None:
-@@ -39,33 +41,39 @@ class PowerModes:
- 
+
          Args:
-             csvFilename (str): Filename of .csv file containing power modes
-+
-             Example 0th row of .csv file: "Duration, Submodule Name #1, Current Power Draw Mode #1, ..., Submodule Name #N, Current Power Draw Mode #N"
-             Example 1st row of .csv file: "100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE"
-             Example 2nd row of .csv file: "200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE"
-+            Example 3rd row of .csv file: "800, RECHARGE, 99"
- 
-+        Returns:
-+            list: List of power modes
-+
-+            From example:
-+            [{'Motor': 0, 'CPU': 1, 'Camera': 2, 'LED': 0, 'GPS': 1}, 100, {'Motor': 1, 'CPU': 1, 'Camera': 0, 'LED': 0, 'GPS': 1}, 200, {'RECHARGE': 99}, 800]
+-            newVoltage (float):
++            newVoltage (float): New
          """
-         modes = []
- 
-         with open(csvFilename, newline="") as f:
-                 reader = csv.reader(f)
-+
-                 rowNumber = 0
-                 for rowData in reader:
-                     if rowNumber == 0:
-                         pass            # Ignore header row with column names
-+
-                     else:
--                        # Determine if the row represents a recharge to specific SoC or a power mode duration
--                        timeDurationOrRecharge = rowData[0].strip()
--                        if timeDurationOrRecharge == "RECHARGE":
--                            soc = int(rowData[1].strip())
--                            modes.append(PowerModes(duration= 0))
--                            modes[rowNumber-1].add_submodule("RECHARGE", soc)
--                        else:
--                            timeDuration = int(timeDurationOrRecharge)
--                            modes.append(PowerModes(duration= timeDuration * Simulation.ONE_SECOND))
--
--                            for i in range(1, len(rowData), 2):
--                                device = rowData[i].strip()
--                                POWER_DRAW_MODE = rowData[i+1].strip()
-+                        timeDuration = int(rowData[0].strip())
-+                        modes.append(PowerModes(duration= timeDuration * Simulation.ONE_SECOND))
-+
-+                        for i in range(1, len(rowData), 2):
-+                            device = rowData[i].strip()
-+                            if device == "RECHARGE":
-+                                soc = float(rowData[i+1].strip())
-+                                modes[rowNumber-1].add_submodule(device, soc)
-+                            else:
-+                                POWER_DRAW_MODE = str(rowData[i+1].strip())
-                                 modes[rowNumber-1].add_submodule(device, self.convert_to_int(POWER_DRAW_MODE))
- 
-                     rowNumber += 1
-@@ -136,8 +144,9 @@ if __name__ == "__main__":
-         mode2.add_submodule("GPS")
-         manualModes.append(mode2)
- 
--        print(manualModes)
-+        #print(manualModes)
- 
-         data = PowerModes()
-         powerModes = data.csv_initialization("PowerModes.csv")
--        print(powerModes)
-+        print(powerModes[2].submodules)
-+        print(powerModes[2].duration)
+
+         self.currentVoltage = newVoltage
+-        self.stateOfCharge = self.state_of_charge()
++        self.stateOfCharge = self.state_of_charge_from_voltage(newVoltage)
+         self.currentPower = self.currentVoltage * self.currentAmpere
+
+
 diff --git a/Simulation.py b/Simulation.py
-index 636524c..06a8518 100644
+index 06a8518..ba82be0 100644
 --- a/Simulation.py
 +++ b/Simulation.py
-@@ -1,5 +1,8 @@
- #!/usr/bin/python3
- 
-+# Standard libraries
-+import math
-+
+@@ -2,6 +2,7 @@
+
+ # Standard libraries
+ import math
++from sys import exec_prefix
+
  # Internal libraries
  from Power.Consumption import Consumption
- from Power.BatteryPack import BatteryPack
-@@ -53,7 +56,7 @@ class Simulation:
-         totalDuration = 0
-         for i in range(0, len(modes), 2):
-             totalDuration += modes[i+1]
--
-+        print(f"Total duration: {totalDuration} seconds")
-         return totalDuration
- 
- 
-@@ -88,13 +91,11 @@ class Simulation:
-         Returns:
-             list: Battery charge state data calculated during a simulation run.
-         """
--        self.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * self.experimentDuration
--
-         if self.experimentDuration < runTimeInSeconds:
-             raise ValueError(f"Requested simulation time of {runTimeInSeconds}, is more than time defined in the powermodes variable.")
- 
--
--        # Initialize timeIndex & totalElaspedTime to 1 at start of the first power mode to log state of charge before sim starts
-+        # Set 1st data point of graph based on GUI text box voltage input to log State of Charge before sim starts
-+        self.batteryPackPercentageLog[0] = int(self.generator.cells.stateOfCharge)
-         timeIndex = 1
-         totalElaspedTime = 1
- 
-@@ -102,18 +103,32 @@ class Simulation:
-         for i in range(0, len(self.powermodes), 2):
-             timeDuration = self.powermodes[i+1]
- 
--            # Allow For Loop to exit early if "runTimeInSecond"s is reached, before "timeDuration" defined in powermodes ends
-+            # Allow "For Loop" to exit early, if "runTimeInSecond"s is reached, before "timeDuration" defined in a powermodes ends.
-+            # Causes the simulation to stop based on higher priority GUI time input, instead of powermode durations.
+@@ -106,46 +107,51 @@ class Simulation:
+             # Allow "For Loop" to exit early, if "runTimeInSecond"s is reached, before "timeDuration" defined in a powermodes ends.
+             # Causes the simulation to stop based on higher priority GUI time input, instead of powermode durations.
              timeStepsToRun = min(timeDuration, runTimeInSeconds - totalElaspedTime)
- 
-             for _ in range(timeStepsToRun):
-+                # Reset variables for next iteration of all power consumers
++            rechargeStep = 0
+
+-            for _ in range(timeStepsToRun):
++            for t in range(timeStepsToRun):
++                #print(f"Time: {timeStepsToRun}")
+                 # Reset variables for next iteration of all power consumers
                  totalCurrentDraw = 0
                  energyUsed = 0
-                 for consumer in self.consumers:
- 
-                     # Determine if "powermodes" data structure defines a charging or power consuming cycle
--                    if self.powermodes[i] == BatteryCell.RECHARGE:
--                        print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i+1]}")
--                        self.generator.cells.recharge(self.powermodes[i+1])
-+                    if "RECHARGE" in self.powermodes[i]:
-+                        #print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i]["RECHARGE"]}")
-+                        minTimeToRecharge = int(((self.generator.cells.totalEnergyCapacity - self.generator.cells.currentEnergy) / (self.generator.cells.maxPower)) * 3600)
-+                        requestedRechargeTime = self.powermodes[i+1]
-+                        startingSoc = self.generator.cells.state_of_charge()
-+                        if minTimeToRecharge <= requestedRechargeTime:
-+                            #self.generator.cells.recharge(self.powermodes[i]["RECHARGE"])
-+                            rechargeStep = (self.powermodes[i]["RECHARGE"] - startingSoc) / requestedRechargeTime
-+                            self.generator.cells.recharge(startingSoc + rechargeStep)
-+                            # TODO: SoC(t) = SoC{max} - (SoC{max} - SoC{0}) e^(-t/tau)
-+                            #socMax = self.powermodes[i]["RECHARGE"]
-+                            #self.generator.cells.recharge(socMax - (socMax- self.batteryPackPercentageLog[0])* math.exp(-requestedRechargeTime/math.tau))
-+                        else:
-+                            raise ValueError(f"Requested recharge time of {requestedRechargeTime} seconds is too fast!")
+-                for consumer in self.consumers:
+-
+-                    # Determine if "powermodes" data structure defines a charging or power consuming cycle
+-                    if "RECHARGE" in self.powermodes[i]:
+-                        #print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i]["RECHARGE"]}")
+-                        minTimeToRecharge = int(((self.generator.cells.totalEnergyCapacity - self.generator.cells.currentEnergy) / (self.generator.cells.maxPower)) * 3600)
+-                        requestedRechargeTime = self.powermodes[i+1]
+-                        startingSoc = self.generator.cells.state_of_charge()
+-                        if minTimeToRecharge <= requestedRechargeTime:
+-                            #self.generator.cells.recharge(self.powermodes[i]["RECHARGE"])
+-                            rechargeStep = (self.powermodes[i]["RECHARGE"] - startingSoc) / requestedRechargeTime
+-                            self.generator.cells.recharge(startingSoc + rechargeStep)
+-                            # TODO: SoC(t) = SoC{max} - (SoC{max} - SoC{0}) e^(-t/tau)
+-                            #socMax = self.powermodes[i]["RECHARGE"]
+-                            #self.generator.cells.recharge(socMax - (socMax- self.batteryPackPercentageLog[0])* math.exp(-requestedRechargeTime/math.tau))
+-                        else:
+-                            raise ValueError(f"Requested recharge time of {requestedRechargeTime} seconds is too fast!")
+
++                # Determine if "powermodes" data structure defines a charging or power consuming cycle
++                if "RECHARGE" in self.powermodes[i]:
++                    minTimeToRecharge = int(((self.generator.cells.totalEnergyCapacity - self.generator.cells.currentEnergy) / (self.generator.cells.maxPower)) * 3600)
++                    requestedRechargeTime = self.powermodes[i+1]
++                    #print(f"Min Time: {minTimeToRecharge} &&  Requested Time: {requestedRechargeTime}")
 +
++                    if t == 0:
++                        rechargeStep = (self.powermodes[i]["RECHARGE"] - self.generator.cells.state_of_charge()) / timeStepsToRun
++
++                    if minTimeToRecharge <= requestedRechargeTime:
++                        self.generator.cells.recharge(rechargeStep + self.generator.cells.stateOfCharge)
++                        #if timeIndex % 25 == 0 or timeIndex % 50 == 0:
++                        #    print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i]['RECHARGE']} at time = {timeIndex}")
++                        # TODO: SoC(t) = SoC{max} - (SoC{max} - SoC{0}) e^(-t/tau)
++                        #socMax = self.powermodes[i]["RECHARGE"]
++                        #self.generator.cells.recharge(socMax - (socMax - self.generator.cells.stateOfCharge)* math.exp(-requestedRechargeTime/math.tau))
                      else:
++                        raise ValueError(f"Requested recharge time of {requestedRechargeTime} seconds is too fast!")
++
++                else:
++                    for consumer in self.consumers:
                          consumer.turn_on(self.powermodes[i][consumer])
                          totalCurrentDraw += consumer.current
-diff --git a/main.py b/main.py
-index f59e01b..50a1dc6 100644
---- a/main.py
-+++ b/main.py
-@@ -2,36 +2,54 @@
- 
- # External libraries
- import sqlite3
-+from typing import BinaryIO
- from datetime import datetime
- from nicegui import Tailwind, ui
- 
-+from AppKit import NSApplication, NSApplicationActivationPolicyRegular, NSImage
-+import os
-+
- # Internal libraries
- from Simulation import Simulation
--#TODO: from PowerModes import PowerModes
-+from PowerModes import PowerModes
- from Power.Consumption import Consumption
- from Power.BatteryCell import BatteryCell
- from Power.BatteryPack import BatteryPack
- 
- 
-+# Global variables initial values for GUI and debugging
- DEBUG_STATEMENTS_ON = False
- 
--# Global variables initial values for GUI and database table saving
- voltageInput = '3.65'
- energyInput = '5'
- cRatingInput = '10'
- chemistryInput = BatteryCell.LI_FE_P_O4
- packConfigInput = ['1S', '1P']
- efficiencyInput = '95'
--saveNumber = 1
-+powerModesInput = []
- 
--csvHelp = """
--Duration, Submodule Name #1, Current Power Draw Mode #1, ... , Submodule Name #N, Current Power Draw Mode #N
-+csvHelp ="""
-+Duration, Name #1, Power Draw Mode #1, ... , ..., Name #N, Power Draw Mode #N
- 
- 100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
- 
- 200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
-+
-+400, RECHARGE, 99
- """
- 
-+def set_app_dock_icon():
-+    #https://pypi.org/project/atomac/
-+    # Get or create the shared NSApplication instance
-+    app = NSApplication.sharedApplication()
-+    app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
-+
-+    icon_path = os.path.expanduser('~/Users/earth/Pictures/StrongBoxLogo.png')  # change to your icon path
-+    if os.path.exists(icon_path):
-+        img = NSImage.alloc().initWithContentsOfFile_(icon_path)
-+        NSApp.setApplicationIconImage_(img)
-+
-+
- def set_battery_pack_parameters(voltageInput: float, energyInput: float, cRatingInput: int, CHEMISTRY_INPUT: str, packConfigInput: list) -> BatteryPack:
-     """ Create a new battery pack object with user input values from the GUI.
- 
-@@ -106,6 +124,54 @@ def set_sim_params(sim: Simulation) -> None:
-         plot.update()
- 
- 
-+def process_csv_upload(content: BinaryIO): # -> list:
-+    """ Read uploaded .csv content and process rows.
-+
-+    Args:
-+        content (BinaryIO): The uploaded CSV content.
-+
-+    Returns:
-+        list: The processed rows.
-+    """
-+    global powerModesInput
-+    data = PowerModes()
-+    powerModesObjList = data.csv_initialization("PowerModes.csv")
-+    #print(f"1st Power Mode Submodules: {powerModesObjList[2].submodules}")
-+    #print(f"1st Power Mode Duration: {powerModesObjList[2].duration}")
-+    powerModesInput = []
-+    for powerMode in powerModesObjList:
-+        powerModesInput.append(powerMode.submodules)
-+        powerModesInput.append(powerMode.duration)
-+        #print(f"Power Mode Submodules: {powerMode.submodules}")
-+        #print(f"Power Mode Duration: {powerMode.duration}")
-+
-+    print(powerModesInput)
-+    #return convert_power_modes(powerModesObjList)
-+
-+
-+def convert_power_modes(parsed_list):
-+    """Convert parsed PowerModes list into declarative powerModes structure."""
-+    powerModes = []
-+
-+    for entry in parsed_list:
-+        # RECHARGE case
-+        if 'RECHARGE' in entry.submodules:
-+            powerModes.append("BatteryCell.RECHARGE")
-+            continue
-+
-+        # Build submodule→mode mapping
-+        mapping = {}
-+        for name, mode_value in entry.submodules.items():
-+            sub = submodules_map[name]
-+            mapping[sub] = Consumption.Mode(mode_value)
-+
-+        # Append dict + duration
-+        powerModes.append(mapping)
-+        powerModes.append(f"{entry.duration} * Simulation.ONE_SECOND")
-+
-+    return powerModes
-+
-+
- def save_data(sim: Simulation) -> None:
-     """ Save sim.batteryPackPercentageLog list to auto incrementing tables based on date and time in a SQlite database
- 
-@@ -156,7 +222,7 @@ def update_pack_config(newValue: str) -> None:
- 
- 
- def GUI(sim: Simulation) -> None:
--    """ Define the NiceGUI user interface (plotly graph, text inputs, dropdowns, and buttons)
-+    """ Define the NiceGUI user interface (plotly graph, text inputs, dropdowns, file upload, and buttons)
- 
-         NiceGUI framework from https://nicegui.io/
-         Icons from https://fonts.google.com/icons?icon.set=Material+Icons
-@@ -203,10 +269,9 @@ def GUI(sim: Simulation) -> None:
- 
-     plot = ui.plotly(fig).classes('w-full h-100')
- 
--
-     with ui.dialog() as dialog, ui.card().classes("w-max"):#.classes("w-[900px] max-w-[95%]"):  # 👈 make dialog wider:
-         ui.label("Example .csv file structure").classes("text-xl font-bold")
--        ui.label(csvHelp).classes("text-sm whitespace-pre-wrap")  # preserve formatting
-+        ui.label(csvHelp).classes("text-md whitespace-pre-wrap")  # preserve formatting
-         ui.button("Close", on_click=dialog.close).classes("w-full")
- 
-     with ui.row().classes('justify-center w-full'):
-@@ -214,7 +279,7 @@ def GUI(sim: Simulation) -> None:
- 
-         ui.input(label='Single Battery Cell Voltage (V)', placeholder='Sets State of Charge % based on cell chemistry', value=voltageInput, on_change=lambda e: set_global("voltageInput", e.value)).classes('w-1/6')
-         ui.input(label='Single Battery Cell Energy (Wh)', placeholder='Energy capacity of each cell', value=energyInput, on_change=lambda e: set_global("energyInput", e.value)).classes('w-1/6')
--        ui.input(label='C-Rating (Unitless charge / discharge rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/6')
-+        ui.input(label='C-Rating (Charge / Discharge Rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/6')
-         ui.input(label='DC/DC Efficiency (%)', placeholder='DC/DC Voltage Regulator Efficiency', value=efficiencyInput, on_change=lambda e: set_global("efficiencyInput", e.value)).classes('w-1/6')
- 
-         sDropdown = ui.select(["1S", "2S", "3S", "4S", "5S", "6S"], value="1S",  on_change=lambda e: update_pack_config(e.value))
-@@ -222,14 +287,10 @@ def GUI(sim: Simulation) -> None:
-         packConfig = [sDropdown.value, pDropdown.value]
- 
- 
--
--
--
--
-     with ui.row().classes('justify-center w-full'):
--        file = ui.upload(label="Upload PowerModes.csv file to define submodules that consume power in this simulation", on_upload=lambda e: ui.notify(f'Uploaded {e.name}')).props('accept=.csv').classes('w-1/2')
-+        ui.upload(label="Upload PowerModes.csv file to define submodules that consume power in this simulation", on_upload=lambda e: process_csv_upload(e.content), auto_upload=True, on_rejected=lambda: ui.notify('File Rejected, select and upload the "PowerModes.csv" file only!')).props('accept=PowerModes.csv color=orange').classes('w-1/2')
- 
--        ui.button("Confirm Parameters & Reset Graph", icon='settings', on_click= lambda: set_sim_params(sim)).props('color=orange').classes('justify-center w-full')
-+        ui.button("Confirm Parameters, Reset Graph, & Reset Error Messages ", icon='settings', on_click= lambda: set_sim_params(sim)).props('color=orange').classes('justify-center w-full')
-         ui.space().classes('justify-center w-full')
-         ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim)).props('color=green').classes('justify-center w-full')
-         ui.space().classes('justify-center w-full')
-@@ -242,9 +303,7 @@ def GUI(sim: Simulation) -> None:
-         redLabelStyle.apply(errorLabel)
- 
-         ui.space().classes('justify-center w-full')
--        helpButton = ui.button("Help", icon='help',  on_click=dialog.open).props('color=red').classes('w-1/4 h-14')
--
--
-+        ui.button("Help", icon='help',  on_click=dialog.open).props('color=red').classes('w-1/4 h-14')
- 
- 
- if __name__ in {"__main__", "__mp_main__"}:
-@@ -260,13 +319,14 @@ if __name__ in {"__main__", "__mp_main__"}:
+                         energyUsed += consumer.real_time_energy(Simulation.ONE_SECOND)
+
+-                #print(f"Update Ampere Draw: {totalCurrentDraw / self.generator.parallelCount}")
+-                self.generator.cells.update_ampere(totalCurrentDraw / self.generator.parallelCount)
+-                #print(f"Energy Used Per Cell: {energyUsed / (self.generator.seriesCount * self.generator.parallelCount)}")
+-                self.generator.cells.consume_energy(energyUsed / (self.generator.seriesCount * self.generator.parallelCount))
++                    #print(f"Update Ampere Draw: {totalCurrentDraw / self.generator.parallelCount}")
++                    self.generator.cells.update_ampere(totalCurrentDraw / self.generator.parallelCount)
++                    #print(f"Energy Used Per Cell: {energyUsed / (self.generator.seriesCount * self.generator.parallelCount)}")
++                    self.generator.cells.consume_energy(energyUsed / (self.generator.seriesCount * self.generator.parallelCount))
+
+-                totalPowerDraw = 0
+-                for consumer in self.consumers:
+-                    totalPowerDraw += consumer.power
++                    totalPowerDraw = 0
++                    for consumer in self.consumers:
++                        totalPowerDraw += consumer.power
+
+-                effectivePowerOutput = self.generator.maxPackPower * (voltageRegulatorEfficiency / 100)
+-                if totalPowerDraw > effectivePowerOutput:
+-                    raise ValueError(f"Warning: Total power draw of {totalPowerDraw} Watts, exceeds battery pack capacity of {effectivePowerOutput} Watts")
++                    effectivePowerOutput = self.generator.maxPackPower * (voltageRegulatorEfficiency / 100)
++                    if totalPowerDraw > effectivePowerOutput:
++                        raise ValueError(f"Warning: Total power draw of {totalPowerDraw} Watts, exceeds battery pack capacity of {effectivePowerOutput} Watts")
+
+                 self.batteryPackPercentageLog[timeIndex] = self.generator.cells.state_of_charge()
+                 #print(f"Battery Pack Percentage: {self.batteryPackPercentageLog[timeIndex]}")
+@@ -184,7 +190,7 @@ if __name__ == "__main__":
                     cpu: Consumption.AVG_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
                    {motor: Consumption.MIN_POWER_DRAW_MODE,
                     cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
--                  BatteryCell.RECHARGE,                   20]
+-                  BatteryCell.RECHARGE, 100]
 +                  {BatteryCell.RECHARGE: 99.0},           800 * Simulation.ONE_SECOND]
- 
+
+     battery = BatteryCell(3.65, 9, 1, BatteryCell.LI_FE_P_O4)
+     batteryPack = BatteryPack(battery, ['1P','2S'])
+diff --git a/diff.txt b/diff.txt
+index f1504ec..f711b76 100644
+--- a/diff.txt
++++ b/diff.txt
+@@ -1,418 +0,0 @@
+-diff --git a/BatteryPackPercentageData.db b/BatteryPackPercentageData.db
+-index cb8d4b9..49d58f9 100644
+-Binary files a/BatteryPackPercentageData.db and b/BatteryPackPercentageData.db differ
+-diff --git a/Power/BatteryCell.py b/Power/BatteryCell.py
+-index b552393..7401f6d 100644
+---- a/Power/BatteryCell.py
+-+++ b/Power/BatteryCell.py
+-@@ -178,12 +178,15 @@ class BatteryCell:
+-         self.stateOfCharge = self.state_of_charge()
+-
+-
+--    def recharge(self, finalSoC: float) -> None:
+-+    def recharge(self, finalSoC: float):
+-         """ Recharge a battery cell to the desired state of charge.
+-
+-         Args:
+-             finalSoC (float): The desired final state of charge
+-
+-+        Returns:
+-+            int: The minimum time required to recharge the battery cell ti desired final SoC in seconds
+-+
+-         Raises:
+-             ValueError: If requested recharge state is greater then 100%, or less then current battery state of charge
+-         """
+-@@ -192,7 +195,7 @@ class BatteryCell:
+-             raise ValueError("Can't recharge battery cell above 100%")
+-
+-         if finalSoC < self.stateOfCharge:
+--            raise ValueError(f"Requested State of Recharge ({finalSoC}%), is equal to or less than current state of charge ({round(self.stateOfCharge, 2)}%).")
+-+            raise ValueError(f"Requested State of Recharge ({finalSoC}%), is less than current state of charge ({round(self.stateOfCharge, 2)}%).")
+-
+-         else:
+-             # Array index in CHEM_SOC array closest to the desired final state of charge
+-@@ -209,7 +212,6 @@ class BatteryCell:
+-             self.stateOfCharge = finalSoC
+-
+-
+--
+-     def change_voltage(self, newVoltage: float) -> None:
+-         """ Change voltage directly without simulating a recharge cycle
+-
+-diff --git a/PowerModes.csv b/PowerModes.csv
+-index cf1e352..01d90a3 100644
+---- a/PowerModes.csv
+-+++ b/PowerModes.csv
+-@@ -1,4 +1,4 @@
+--Duration, Submodule Name, Current Power Draw Mode
+-+Duration, Name #1, Power Draw Mode #1, ... , ..., Name #N, Power Draw Mode #N
+- 100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
+- 200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
+--RECHARGE, 100
+-+800, RECHARGE, 99
+-diff --git a/PowerModes.py b/PowerModes.py
+-index ab2e144..e72d3af 100644
+---- a/PowerModes.py
+-+++ b/PowerModes.py
+-@@ -17,16 +17,18 @@ class PowerModes:
+-     duration : int = Simulation.ONE_SECOND
+-
+-     def __str__(self) -> str:
+--            """Custom string formatting: show 0 as a constant string."""
+--            parts = []
+--            for name, powerDrawMode in self.submodules.items():
+--                if powerDrawMode == Consumption.MIN_POWER_DRAW_MODE:
+--                    parts.append(f"{name}: 'MIN_POWER_DRAW_MODE'")
+--                elif powerDrawMode == Consumption.AVG_POWER_DRAW_MODE:
+--                    parts.append(f"{name}: 'AVG_POWER_DRAW_MODE'")
+--                elif powerDrawMode == Consumption.MAX_POWER_DRAW_MODE:
+--                    parts.append(f"{name}: 'MAX_POWER_DRAW_MODE'")
+--            return f"Running {parts} for {self.duration} seconds"
+-+        """Custom string formatting: show 0 as a constant string."""
+-+        parts = []
+-+
+-+        for name, powerDrawMode in self.submodules.items():
+-+            if powerDrawMode == Consumption.MIN_POWER_DRAW_MODE:
+-+                parts.append(f"{name}: 'MIN_POWER_DRAW_MODE'")
+-+            elif powerDrawMode == Consumption.AVG_POWER_DRAW_MODE:
+-+                parts.append(f"{name}: 'AVG_POWER_DRAW_MODE'")
+-+            elif powerDrawMode == Consumption.MAX_POWER_DRAW_MODE:
+-+                parts.append(f"{name}: 'MAX_POWER_DRAW_MODE'")
+-+
+-+        return f"Running {parts} for {self.duration} seconds"
+-
+-
+-     def add_submodule(self, name: str, powerDrawMode: int = Consumption.MIN_POWER_DRAW_MODE) -> None:
+-@@ -39,33 +41,39 @@ class PowerModes:
+-
+-         Args:
+-             csvFilename (str): Filename of .csv file containing power modes
+-+
+-             Example 0th row of .csv file: "Duration, Submodule Name #1, Current Power Draw Mode #1, ..., Submodule Name #N, Current Power Draw Mode #N"
+-             Example 1st row of .csv file: "100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE"
+-             Example 2nd row of .csv file: "200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE"
+-+            Example 3rd row of .csv file: "800, RECHARGE, 99"
+-
+-+        Returns:
+-+            list: List of power modes
+-+
+-+            From example:
+-+            [{'Motor': 0, 'CPU': 1, 'Camera': 2, 'LED': 0, 'GPS': 1}, 100, {'Motor': 1, 'CPU': 1, 'Camera': 0, 'LED': 0, 'GPS': 1}, 200, {'RECHARGE': 99}, 800]
+-         """
+-         modes = []
+-
+-         with open(csvFilename, newline="") as f:
+-                 reader = csv.reader(f)
+-+
+-                 rowNumber = 0
+-                 for rowData in reader:
+-                     if rowNumber == 0:
+-                         pass            # Ignore header row with column names
+-+
+-                     else:
+--                        # Determine if the row represents a recharge to specific SoC or a power mode duration
+--                        timeDurationOrRecharge = rowData[0].strip()
+--                        if timeDurationOrRecharge == "RECHARGE":
+--                            soc = int(rowData[1].strip())
+--                            modes.append(PowerModes(duration= 0))
+--                            modes[rowNumber-1].add_submodule("RECHARGE", soc)
+--                        else:
+--                            timeDuration = int(timeDurationOrRecharge)
+--                            modes.append(PowerModes(duration= timeDuration * Simulation.ONE_SECOND))
+--
+--                            for i in range(1, len(rowData), 2):
+--                                device = rowData[i].strip()
+--                                POWER_DRAW_MODE = rowData[i+1].strip()
+-+                        timeDuration = int(rowData[0].strip())
+-+                        modes.append(PowerModes(duration= timeDuration * Simulation.ONE_SECOND))
+-+
+-+                        for i in range(1, len(rowData), 2):
+-+                            device = rowData[i].strip()
+-+                            if device == "RECHARGE":
+-+                                soc = float(rowData[i+1].strip())
+-+                                modes[rowNumber-1].add_submodule(device, soc)
+-+                            else:
+-+                                POWER_DRAW_MODE = str(rowData[i+1].strip())
+-                                 modes[rowNumber-1].add_submodule(device, self.convert_to_int(POWER_DRAW_MODE))
+-
+-                     rowNumber += 1
+-@@ -136,8 +144,9 @@ if __name__ == "__main__":
+-         mode2.add_submodule("GPS")
+-         manualModes.append(mode2)
+-
+--        print(manualModes)
+-+        #print(manualModes)
+-
+-         data = PowerModes()
+-         powerModes = data.csv_initialization("PowerModes.csv")
+--        print(powerModes)
+-+        print(powerModes[2].submodules)
+-+        print(powerModes[2].duration)
+-diff --git a/Simulation.py b/Simulation.py
+-index 636524c..06a8518 100644
+---- a/Simulation.py
+-+++ b/Simulation.py
+-@@ -1,5 +1,8 @@
+- #!/usr/bin/python3
+-
+-+# Standard libraries
+-+import math
+-+
+- # Internal libraries
+- from Power.Consumption import Consumption
+- from Power.BatteryPack import BatteryPack
+-@@ -53,7 +56,7 @@ class Simulation:
+-         totalDuration = 0
+-         for i in range(0, len(modes), 2):
+-             totalDuration += modes[i+1]
+--
+-+        print(f"Total duration: {totalDuration} seconds")
+-         return totalDuration
+-
+-
+-@@ -88,13 +91,11 @@ class Simulation:
+-         Returns:
+-             list: Battery charge state data calculated during a simulation run.
+-         """
+--        self.batteryPackPercentageLog = [BatteryCell.MAX_STATE_OF_CHARGE] * self.experimentDuration
+--
+-         if self.experimentDuration < runTimeInSeconds:
+-             raise ValueError(f"Requested simulation time of {runTimeInSeconds}, is more than time defined in the powermodes variable.")
+-
+--
+--        # Initialize timeIndex & totalElaspedTime to 1 at start of the first power mode to log state of charge before sim starts
+-+        # Set 1st data point of graph based on GUI text box voltage input to log State of Charge before sim starts
+-+        self.batteryPackPercentageLog[0] = int(self.generator.cells.stateOfCharge)
+-         timeIndex = 1
+-         totalElaspedTime = 1
+-
+-@@ -102,18 +103,32 @@ class Simulation:
+-         for i in range(0, len(self.powermodes), 2):
+-             timeDuration = self.powermodes[i+1]
+-
+--            # Allow For Loop to exit early if "runTimeInSecond"s is reached, before "timeDuration" defined in powermodes ends
+-+            # Allow "For Loop" to exit early, if "runTimeInSecond"s is reached, before "timeDuration" defined in a powermodes ends.
+-+            # Causes the simulation to stop based on higher priority GUI time input, instead of powermode durations.
+-             timeStepsToRun = min(timeDuration, runTimeInSeconds - totalElaspedTime)
+-
+-             for _ in range(timeStepsToRun):
+-+                # Reset variables for next iteration of all power consumers
+-                 totalCurrentDraw = 0
+-                 energyUsed = 0
+-                 for consumer in self.consumers:
+-
+-                     # Determine if "powermodes" data structure defines a charging or power consuming cycle
+--                    if self.powermodes[i] == BatteryCell.RECHARGE:
+--                        print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i+1]}")
+--                        self.generator.cells.recharge(self.powermodes[i+1])
+-+                    if "RECHARGE" in self.powermodes[i]:
+-+                        #print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i]["RECHARGE"]}")
+-+                        minTimeToRecharge = int(((self.generator.cells.totalEnergyCapacity - self.generator.cells.currentEnergy) / (self.generator.cells.maxPower)) * 3600)
+-+                        requestedRechargeTime = self.powermodes[i+1]
+-+                        startingSoc = self.generator.cells.state_of_charge()
+-+                        if minTimeToRecharge <= requestedRechargeTime:
+-+                            #self.generator.cells.recharge(self.powermodes[i]["RECHARGE"])
+-+                            rechargeStep = (self.powermodes[i]["RECHARGE"] - startingSoc) / requestedRechargeTime
+-+                            self.generator.cells.recharge(startingSoc + rechargeStep)
+-+                            # TODO: SoC(t) = SoC{max} - (SoC{max} - SoC{0}) e^(-t/tau)
+-+                            #socMax = self.powermodes[i]["RECHARGE"]
+-+                            #self.generator.cells.recharge(socMax - (socMax- self.batteryPackPercentageLog[0])* math.exp(-requestedRechargeTime/math.tau))
+-+                        else:
+-+                            raise ValueError(f"Requested recharge time of {requestedRechargeTime} seconds is too fast!")
+-+
+-                     else:
+-                         consumer.turn_on(self.powermodes[i][consumer])
+-                         totalCurrentDraw += consumer.current
+-diff --git a/main.py b/main.py
+-index f59e01b..50a1dc6 100644
+---- a/main.py
+-+++ b/main.py
+-@@ -2,36 +2,54 @@
+-
+- # External libraries
+- import sqlite3
+-+from typing import BinaryIO
+- from datetime import datetime
+- from nicegui import Tailwind, ui
+-
+-+from AppKit import NSApplication, NSApplicationActivationPolicyRegular, NSImage
+-+import os
+-+
+- # Internal libraries
+- from Simulation import Simulation
+--#TODO: from PowerModes import PowerModes
+-+from PowerModes import PowerModes
+- from Power.Consumption import Consumption
+- from Power.BatteryCell import BatteryCell
+- from Power.BatteryPack import BatteryPack
+-
+-
+-+# Global variables initial values for GUI and debugging
+- DEBUG_STATEMENTS_ON = False
+-
+--# Global variables initial values for GUI and database table saving
+- voltageInput = '3.65'
+- energyInput = '5'
+- cRatingInput = '10'
+- chemistryInput = BatteryCell.LI_FE_P_O4
+- packConfigInput = ['1S', '1P']
+- efficiencyInput = '95'
+--saveNumber = 1
+-+powerModesInput = []
+-
+--csvHelp = """
+--Duration, Submodule Name #1, Current Power Draw Mode #1, ... , Submodule Name #N, Current Power Draw Mode #N
+-+csvHelp ="""
+-+Duration, Name #1, Power Draw Mode #1, ... , ..., Name #N, Power Draw Mode #N
+-
+- 100, Motor, MIN_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MAX_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
+-
+- 200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
+-+
+-+400, RECHARGE, 99
+- """
+-
+-+def set_app_dock_icon():
+-+    #https://pypi.org/project/atomac/
+-+    # Get or create the shared NSApplication instance
+-+    app = NSApplication.sharedApplication()
+-+    app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+-+
+-+    icon_path = os.path.expanduser('~/Users/earth/Pictures/StrongBoxLogo.png')  # change to your icon path
+-+    if os.path.exists(icon_path):
+-+        img = NSImage.alloc().initWithContentsOfFile_(icon_path)
+-+        NSApp.setApplicationIconImage_(img)
+-+
+-+
+- def set_battery_pack_parameters(voltageInput: float, energyInput: float, cRatingInput: int, CHEMISTRY_INPUT: str, packConfigInput: list) -> BatteryPack:
+-     """ Create a new battery pack object with user input values from the GUI.
+-
+-@@ -106,6 +124,54 @@ def set_sim_params(sim: Simulation) -> None:
+-         plot.update()
+-
+-
+-+def process_csv_upload(content: BinaryIO): # -> list:
+-+    """ Read uploaded .csv content and process rows.
+-+
+-+    Args:
+-+        content (BinaryIO): The uploaded CSV content.
+-+
+-+    Returns:
+-+        list: The processed rows.
+-+    """
+-+    global powerModesInput
+-+    data = PowerModes()
+-+    powerModesObjList = data.csv_initialization("PowerModes.csv")
+-+    #print(f"1st Power Mode Submodules: {powerModesObjList[2].submodules}")
+-+    #print(f"1st Power Mode Duration: {powerModesObjList[2].duration}")
+-+    powerModesInput = []
+-+    for powerMode in powerModesObjList:
+-+        powerModesInput.append(powerMode.submodules)
+-+        powerModesInput.append(powerMode.duration)
+-+        #print(f"Power Mode Submodules: {powerMode.submodules}")
+-+        #print(f"Power Mode Duration: {powerMode.duration}")
+-+
+-+    print(powerModesInput)
+-+    #return convert_power_modes(powerModesObjList)
+-+
+-+
+-+def convert_power_modes(parsed_list):
+-+    """Convert parsed PowerModes list into declarative powerModes structure."""
+-+    powerModes = []
+-+
+-+    for entry in parsed_list:
+-+        # RECHARGE case
+-+        if 'RECHARGE' in entry.submodules:
+-+            powerModes.append("BatteryCell.RECHARGE")
+-+            continue
+-+
+-+        # Build submodule→mode mapping
+-+        mapping = {}
+-+        for name, mode_value in entry.submodules.items():
+-+            sub = submodules_map[name]
+-+            mapping[sub] = Consumption.Mode(mode_value)
+-+
+-+        # Append dict + duration
+-+        powerModes.append(mapping)
+-+        powerModes.append(f"{entry.duration} * Simulation.ONE_SECOND")
+-+
+-+    return powerModes
+-+
+-+
+- def save_data(sim: Simulation) -> None:
+-     """ Save sim.batteryPackPercentageLog list to auto incrementing tables based on date and time in a SQlite database
+-
+-@@ -156,7 +222,7 @@ def update_pack_config(newValue: str) -> None:
+-
+-
+- def GUI(sim: Simulation) -> None:
+--    """ Define the NiceGUI user interface (plotly graph, text inputs, dropdowns, and buttons)
+-+    """ Define the NiceGUI user interface (plotly graph, text inputs, dropdowns, file upload, and buttons)
+-
+-         NiceGUI framework from https://nicegui.io/
+-         Icons from https://fonts.google.com/icons?icon.set=Material+Icons
+-@@ -203,10 +269,9 @@ def GUI(sim: Simulation) -> None:
+-
+-     plot = ui.plotly(fig).classes('w-full h-100')
+-
+--
+-     with ui.dialog() as dialog, ui.card().classes("w-max"):#.classes("w-[900px] max-w-[95%]"):  # 👈 make dialog wider:
+-         ui.label("Example .csv file structure").classes("text-xl font-bold")
+--        ui.label(csvHelp).classes("text-sm whitespace-pre-wrap")  # preserve formatting
+-+        ui.label(csvHelp).classes("text-md whitespace-pre-wrap")  # preserve formatting
+-         ui.button("Close", on_click=dialog.close).classes("w-full")
+-
+-     with ui.row().classes('justify-center w-full'):
+-@@ -214,7 +279,7 @@ def GUI(sim: Simulation) -> None:
+-
+-         ui.input(label='Single Battery Cell Voltage (V)', placeholder='Sets State of Charge % based on cell chemistry', value=voltageInput, on_change=lambda e: set_global("voltageInput", e.value)).classes('w-1/6')
+-         ui.input(label='Single Battery Cell Energy (Wh)', placeholder='Energy capacity of each cell', value=energyInput, on_change=lambda e: set_global("energyInput", e.value)).classes('w-1/6')
+--        ui.input(label='C-Rating (Unitless charge / discharge rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/6')
+-+        ui.input(label='C-Rating (Charge / Discharge Rate)', placeholder='Max Amps = C-Rating *  Energy / Voltage', value=cRatingInput, on_change=lambda e: set_global("cRatingInput", e.value)).classes('w-1/6')
+-         ui.input(label='DC/DC Efficiency (%)', placeholder='DC/DC Voltage Regulator Efficiency', value=efficiencyInput, on_change=lambda e: set_global("efficiencyInput", e.value)).classes('w-1/6')
+-
+-         sDropdown = ui.select(["1S", "2S", "3S", "4S", "5S", "6S"], value="1S",  on_change=lambda e: update_pack_config(e.value))
+-@@ -222,14 +287,10 @@ def GUI(sim: Simulation) -> None:
+-         packConfig = [sDropdown.value, pDropdown.value]
+-
+-
+--
+--
+--
+--
+-     with ui.row().classes('justify-center w-full'):
+--        file = ui.upload(label="Upload PowerModes.csv file to define submodules that consume power in this simulation", on_upload=lambda e: ui.notify(f'Uploaded {e.name}')).props('accept=.csv').classes('w-1/2')
+-+        ui.upload(label="Upload PowerModes.csv file to define submodules that consume power in this simulation", on_upload=lambda e: process_csv_upload(e.content), auto_upload=True, on_rejected=lambda: ui.notify('File Rejected, select and upload the "PowerModes.csv" file only!')).props('accept=PowerModes.csv color=orange').classes('w-1/2')
+-
+--        ui.button("Confirm Parameters & Reset Graph", icon='settings', on_click= lambda: set_sim_params(sim)).props('color=orange').classes('justify-center w-full')
+-+        ui.button("Confirm Parameters, Reset Graph, & Reset Error Messages ", icon='settings', on_click= lambda: set_sim_params(sim)).props('color=orange').classes('justify-center w-full')
+-         ui.space().classes('justify-center w-full')
+-         ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim)).props('color=green').classes('justify-center w-full')
+-         ui.space().classes('justify-center w-full')
+-@@ -242,9 +303,7 @@ def GUI(sim: Simulation) -> None:
+-         redLabelStyle.apply(errorLabel)
+-
+-         ui.space().classes('justify-center w-full')
+--        helpButton = ui.button("Help", icon='help',  on_click=dialog.open).props('color=red').classes('w-1/4 h-14')
+--
+--
+-+        ui.button("Help", icon='help',  on_click=dialog.open).props('color=red').classes('w-1/4 h-14')
+-
+-
+- if __name__ in {"__main__", "__mp_main__"}:
+-@@ -260,13 +319,14 @@ if __name__ in {"__main__", "__mp_main__"}:
+-                    cpu: Consumption.AVG_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+-                   {motor: Consumption.MIN_POWER_DRAW_MODE,
+-                    cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+--                  BatteryCell.RECHARGE,                   20]
+-+                  {BatteryCell.RECHARGE: 99.0},           800 * Simulation.ONE_SECOND]
+-
+-     batteryPack = set_battery_pack_parameters(float(voltageInput), float(energyInput), int(cRatingInput), str(chemistryInput), list(packConfigInput))
+-     sim = Simulation(submodules, batteryPack, powerModes)
+-     sim.initialize_data(float(voltageInput))
+-     if DEBUG_STATEMENTS_ON: sim.print_all_sim_objects("Pre GUI")
+-
+-+    #set_app_dock_icon()
+-     GUI(sim)
+-
+-     ui.run(native=True, dark=True, window_size=(1920, 1080), title='Battery Pack Simulation', on_air=None)
+diff --git a/main.py b/main.py
+index 50a1dc6..65f30b6 100644
+--- a/main.py
++++ b/main.py
+@@ -35,7 +35,7 @@ Duration, Name #1, Power Draw Mode #1, ... , ..., Name #N, Power Draw Mode #N
+
+ 200, Motor, AVG_POWER_DRAW_MODE, CPU, AVG_POWER_DRAW_MODE, Camera, MIN_POWER_DRAW_MODE, LED, MIN_POWER_DRAW_MODE, GPS, AVG_POWER_DRAW_MODE
+
+-400, RECHARGE, 99
++800, RECHARGE, 99
+ """
+
+ def set_app_dock_icon():
+@@ -47,7 +47,7 @@ def set_app_dock_icon():
+     icon_path = os.path.expanduser('~/Users/earth/Pictures/StrongBoxLogo.png')  # change to your icon path
+     if os.path.exists(icon_path):
+         img = NSImage.alloc().initWithContentsOfFile_(icon_path)
+-        NSApp.setApplicationIconImage_(img)
++        app.setApplicationIconImage_(img)
+
+
+ def set_battery_pack_parameters(voltageInput: float, energyInput: float, cRatingInput: int, CHEMISTRY_INPUT: str, packConfigInput: list) -> BatteryPack:
+@@ -117,8 +117,8 @@ def set_sim_params(sim: Simulation) -> None:
+                 badValue = "'    '"
+             errorLabel.set_text(f"CONFIG ERROR: You entered {badValue}, which is not a valid integer value.")
+         else:
+-            errorLabel.set_text(f"ERROR: {e}")
+-        plot.figure['data'][0]['y'] = [sim.generator.cells.state_of_charge_from_voltage(float(voltageInput))] * sim.experimentDuration
++            errorLabel.set_text(f"CONFIG ERROR: {e}")
++        #TODO REMOVE? plot.figure['data'][0]['y'] = [sim.generator.cells.state_of_charge_from_voltage(float(voltageInput))] * sim.experimentDuration
+
+     finally:
+         plot.update()
+@@ -267,6 +267,11 @@ def GUI(sim: Simulation) -> None:
+         'tickvals': [v for v in range(120, sim.experimentDuration, 120)],
+     })
+
++    fig['layout']['yaxis'].update({
++        'tickmode': 'array',
++        'tickvals': list(range(0, int(BatteryCell.MAX_STATE_OF_CHARGE + 1), 10)),
++    })
++
+     plot = ui.plotly(fig).classes('w-full h-100')
+
+     with ui.dialog() as dialog, ui.card().classes("w-max"):#.classes("w-[900px] max-w-[95%]"):  # 👈 make dialog wider:
+@@ -319,7 +324,7 @@ if __name__ in {"__main__", "__mp_main__"}:
+                    cpu: Consumption.AVG_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+                   {motor: Consumption.MIN_POWER_DRAW_MODE,
+                    cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
+-                  {BatteryCell.RECHARGE: 99.0},           800 * Simulation.ONE_SECOND]
++                  {BatteryCell.RECHARGE: 50.0},            400 * Simulation.ONE_SECOND]
+
      batteryPack = set_battery_pack_parameters(float(voltageInput), float(energyInput), int(cRatingInput), str(chemistryInput), list(packConfigInput))
      sim = Simulation(submodules, batteryPack, powerModes)
-     sim.initialize_data(float(voltageInput))
-     if DEBUG_STATEMENTS_ON: sim.print_all_sim_objects("Pre GUI")
- 
-+    #set_app_dock_icon()
-     GUI(sim)
- 
-     ui.run(native=True, dark=True, window_size=(1920, 1080), title='Battery Pack Simulation', on_air=None)

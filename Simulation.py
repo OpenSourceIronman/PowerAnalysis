@@ -2,6 +2,7 @@
 
 # Standard libraries
 import math
+from sys import exec_prefix
 
 # Internal libraries
 from Power.Consumption import Consumption
@@ -106,46 +107,51 @@ class Simulation:
             # Allow "For Loop" to exit early, if "runTimeInSecond"s is reached, before "timeDuration" defined in a powermodes ends.
             # Causes the simulation to stop based on higher priority GUI time input, instead of powermode durations.
             timeStepsToRun = min(timeDuration, runTimeInSeconds - totalElaspedTime)
+            rechargeStep = 0
 
-            for _ in range(timeStepsToRun):
+            for t in range(timeStepsToRun):
+                #print(f"Time: {timeStepsToRun}")
                 # Reset variables for next iteration of all power consumers
                 totalCurrentDraw = 0
                 energyUsed = 0
-                for consumer in self.consumers:
 
-                    # Determine if "powermodes" data structure defines a charging or power consuming cycle
-                    if "RECHARGE" in self.powermodes[i]:
-                        #print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i]["RECHARGE"]}")
-                        minTimeToRecharge = int(((self.generator.cells.totalEnergyCapacity - self.generator.cells.currentEnergy) / (self.generator.cells.maxPower)) * 3600)
-                        requestedRechargeTime = self.powermodes[i+1]
-                        startingSoc = self.generator.cells.state_of_charge()
-                        if minTimeToRecharge <= requestedRechargeTime:
-                            #self.generator.cells.recharge(self.powermodes[i]["RECHARGE"])
-                            rechargeStep = (self.powermodes[i]["RECHARGE"] - startingSoc) / requestedRechargeTime
-                            self.generator.cells.recharge(startingSoc + rechargeStep)
-                            # TODO: SoC(t) = SoC{max} - (SoC{max} - SoC{0}) e^(-t/tau)
-                            #socMax = self.powermodes[i]["RECHARGE"]
-                            #self.generator.cells.recharge(socMax - (socMax- self.batteryPackPercentageLog[0])* math.exp(-requestedRechargeTime/math.tau))
-                        else:
-                            raise ValueError(f"Requested recharge time of {requestedRechargeTime} seconds is too fast!")
+                # Determine if "powermodes" data structure defines a charging or power consuming cycle
+                if "RECHARGE" in self.powermodes[i]:
+                    minTimeToRecharge = int(((self.generator.cells.totalEnergyCapacity - self.generator.cells.currentEnergy) / (self.generator.cells.maxPower)) * 3600)
+                    requestedRechargeTime = self.powermodes[i+1]
+                    #print(f"Min Time: {minTimeToRecharge} &&  Requested Time: {requestedRechargeTime}")
 
+                    if t == 0:
+                        rechargeStep = (self.powermodes[i]["RECHARGE"] - self.generator.cells.state_of_charge()) / timeStepsToRun
+
+                    if minTimeToRecharge <= requestedRechargeTime:
+                        self.generator.cells.recharge(rechargeStep + self.generator.cells.stateOfCharge)
+                        #if timeIndex % 25 == 0 or timeIndex % 50 == 0:
+                        #    print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i]['RECHARGE']} at time = {timeIndex}")
+                        # TODO: SoC(t) = SoC{max} - (SoC{max} - SoC{0}) e^(-t/tau)
+                        #socMax = self.powermodes[i]["RECHARGE"]
+                        #self.generator.cells.recharge(socMax - (socMax - self.generator.cells.stateOfCharge)* math.exp(-requestedRechargeTime/math.tau))
                     else:
+                        raise ValueError(f"Requested recharge time of {requestedRechargeTime} seconds is too fast!")
+
+                else:
+                    for consumer in self.consumers:
                         consumer.turn_on(self.powermodes[i][consumer])
                         totalCurrentDraw += consumer.current
                         energyUsed += consumer.real_time_energy(Simulation.ONE_SECOND)
 
-                #print(f"Update Ampere Draw: {totalCurrentDraw / self.generator.parallelCount}")
-                self.generator.cells.update_ampere(totalCurrentDraw / self.generator.parallelCount)
-                #print(f"Energy Used Per Cell: {energyUsed / (self.generator.seriesCount * self.generator.parallelCount)}")
-                self.generator.cells.consume_energy(energyUsed / (self.generator.seriesCount * self.generator.parallelCount))
+                    #print(f"Update Ampere Draw: {totalCurrentDraw / self.generator.parallelCount}")
+                    self.generator.cells.update_ampere(totalCurrentDraw / self.generator.parallelCount)
+                    #print(f"Energy Used Per Cell: {energyUsed / (self.generator.seriesCount * self.generator.parallelCount)}")
+                    self.generator.cells.consume_energy(energyUsed / (self.generator.seriesCount * self.generator.parallelCount))
 
-                totalPowerDraw = 0
-                for consumer in self.consumers:
-                    totalPowerDraw += consumer.power
+                    totalPowerDraw = 0
+                    for consumer in self.consumers:
+                        totalPowerDraw += consumer.power
 
-                effectivePowerOutput = self.generator.maxPackPower * (voltageRegulatorEfficiency / 100)
-                if totalPowerDraw > effectivePowerOutput:
-                    raise ValueError(f"Warning: Total power draw of {totalPowerDraw} Watts, exceeds battery pack capacity of {effectivePowerOutput} Watts")
+                    effectivePowerOutput = self.generator.maxPackPower * (voltageRegulatorEfficiency / 100)
+                    if totalPowerDraw > effectivePowerOutput:
+                        raise ValueError(f"Warning: Total power draw of {totalPowerDraw} Watts, exceeds battery pack capacity of {effectivePowerOutput} Watts")
 
                 self.batteryPackPercentageLog[timeIndex] = self.generator.cells.state_of_charge()
                 #print(f"Battery Pack Percentage: {self.batteryPackPercentageLog[timeIndex]}")
@@ -184,7 +190,7 @@ if __name__ == "__main__":
                    cpu: Consumption.AVG_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
                   {motor: Consumption.MIN_POWER_DRAW_MODE,
                    cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
-                  BatteryCell.RECHARGE, 100]
+                  {BatteryCell.RECHARGE: 99.0},           800 * Simulation.ONE_SECOND]
 
     battery = BatteryCell(3.65, 9, 1, BatteryCell.LI_FE_P_O4)
     batteryPack = BatteryPack(battery, ['1P','2S'])

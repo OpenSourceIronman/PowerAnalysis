@@ -167,7 +167,7 @@ class BatteryCell:
             raise ValueError("Battery cell current draw not set in BatteryCell.update_ampere() before Simulator.run() called.")
 
         self.currentEnergy -= energy
-        if self.currentEnergy < 0:
+        if self.currentEnergy < 0.00:
             self.currentEnergy = 0.00
 
         # Array index in CHEM_SOC array closest to the current state of charge
@@ -184,9 +184,6 @@ class BatteryCell:
         Args:
             finalSoC (float): The desired final state of charge
 
-        Returns:
-            int: The minimum time required to recharge the battery cell ti desired final SoC in seconds
-
         Raises:
             ValueError: If requested recharge state is greater then 100%, or less then current battery state of charge
         """
@@ -198,6 +195,8 @@ class BatteryCell:
             raise ValueError(f"Requested State of Recharge ({finalSoC}%), is less than current state of charge ({round(self.stateOfCharge, 2)}%).")
 
         else:
+            self.stateOfCharge = finalSoC
+            self.currentEnergy = (finalSoC/ 100.0) * self.totalEnergyCapacity
             # Array index in CHEM_SOC array closest to the desired final state of charge
             idx = (np.abs(BatteryCell.CHEM_SOC[self.chemistry]- finalSoC)).argmin()
             self.currentVoltage = BatteryCell.CHEM_VOLTAGE[self.chemistry][idx]
@@ -209,18 +208,16 @@ class BatteryCell:
             if self.stateOfCharge <= 50:
                 self.rechargeCycleNumber += 1
 
-            self.stateOfCharge = finalSoC
-
 
     def change_voltage(self, newVoltage: float) -> None:
         """ Change voltage directly without simulating a recharge cycle
 
         Args:
-            newVoltage (float):
+            newVoltage (float): New
         """
 
         self.currentVoltage = newVoltage
-        self.stateOfCharge = self.state_of_charge()
+        self.stateOfCharge = self.state_of_charge_from_voltage(newVoltage)
         self.currentPower = self.currentVoltage * self.currentAmpere
 
 

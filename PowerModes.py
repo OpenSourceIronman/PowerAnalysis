@@ -8,7 +8,6 @@ import csv
 # Internal libraries
 from Simulation import Simulation
 from Power.Consumption import Consumption
-from Power.BatteryCell import BatteryCell
 
 
 @dataclass

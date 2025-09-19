@@ -2,7 +2,6 @@
 
 # Standard libraries
 import math
-from sys import exec_prefix
 
 # Internal libraries
 from Power.Consumption import Consumption
@@ -108,6 +107,7 @@ class Simulation:
             # Causes the simulation to stop based on higher priority GUI time input, instead of powermode durations.
             timeStepsToRun = min(timeDuration, runTimeInSeconds - totalElaspedTime)
             rechargeStep = 0
+            fastestAllowedRechargeTime= int(((self.generator.cells.totalEnergyCapacity - self.generator.cells.currentEnergy) / (self.generator.cells.maxPower)) * 3600) / self.generator.parallelCount
 
             for t in range(timeStepsToRun):
                 #print(f"Time: {timeStepsToRun}")
@@ -117,14 +117,15 @@ class Simulation:
 
                 # Determine if "powermodes" data structure defines a charging or power consuming cycle
                 if "RECHARGE" in self.powermodes[i]:
-                    minTimeToRecharge = int(((self.generator.cells.totalEnergyCapacity - self.generator.cells.currentEnergy) / (self.generator.cells.maxPower)) * 3600)
                     requestedRechargeTime = self.powermodes[i+1]
+                    print(f"Requested Time: {requestedRechargeTime}")
                     #print(f"Min Time: {minTimeToRecharge} &&  Requested Time: {requestedRechargeTime}")
 
                     if t == 0:
                         rechargeStep = (self.powermodes[i]["RECHARGE"] - self.generator.cells.state_of_charge()) / timeStepsToRun
+                        print(f"Recharge Step: {rechargeStep}")
 
-                    if minTimeToRecharge <= requestedRechargeTime:
+                    if fastestAllowedRechargeTime <= requestedRechargeTime:
                         self.generator.cells.recharge(rechargeStep + self.generator.cells.stateOfCharge)
                         #if timeIndex % 25 == 0 or timeIndex % 50 == 0:
                         #    print(f"Charging from {self.generator.cells.stateOfCharge} to {self.powermodes[i]['RECHARGE']} at time = {timeIndex}")
@@ -135,23 +136,22 @@ class Simulation:
                         raise ValueError(f"Requested recharge time of {requestedRechargeTime} seconds is too fast!")
 
                 else:
+                    totalPowerDraw = 0
+
                     for consumer in self.consumers:
                         consumer.turn_on(self.powermodes[i][consumer])
                         totalCurrentDraw += consumer.current
+                        totalPowerDraw += consumer.power
                         energyUsed += consumer.real_time_energy(Simulation.ONE_SECOND)
+
+                    effectivePowerOutput = self.generator.maxPackPower * (voltageRegulatorEfficiency / 100)
+                    if totalPowerDraw > effectivePowerOutput:
+                        raise ValueError(f"Warning: Total power draw of {totalPowerDraw} Watts, exceeds battery pack capacity of {effectivePowerOutput} Watts")
 
                     #print(f"Update Ampere Draw: {totalCurrentDraw / self.generator.parallelCount}")
                     self.generator.cells.update_ampere(totalCurrentDraw / self.generator.parallelCount)
                     #print(f"Energy Used Per Cell: {energyUsed / (self.generator.seriesCount * self.generator.parallelCount)}")
                     self.generator.cells.consume_energy(energyUsed / (self.generator.seriesCount * self.generator.parallelCount))
-
-                    totalPowerDraw = 0
-                    for consumer in self.consumers:
-                        totalPowerDraw += consumer.power
-
-                    effectivePowerOutput = self.generator.maxPackPower * (voltageRegulatorEfficiency / 100)
-                    if totalPowerDraw > effectivePowerOutput:
-                        raise ValueError(f"Warning: Total power draw of {totalPowerDraw} Watts, exceeds battery pack capacity of {effectivePowerOutput} Watts")
 
                 self.batteryPackPercentageLog[timeIndex] = self.generator.cells.state_of_charge()
                 #print(f"Battery Pack Percentage: {self.batteryPackPercentageLog[timeIndex]}")

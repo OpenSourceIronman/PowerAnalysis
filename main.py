@@ -6,6 +6,7 @@ from typing import BinaryIO
 from datetime import datetime
 from nicegui import Tailwind, ui
 
+# TODO For custom Icons on MacOS Dock
 from AppKit import NSApplication, NSApplicationActivationPolicyRegular, NSImage
 import os
 
@@ -83,6 +84,7 @@ def run_sim(sim: Simulation) -> None:
     except ValueError as e:
         errorLabel.visible = True
         errorLabel.set_text(f"RUNTIME ERROR: {e}")
+        plot.figure['data'][0]['y'] = [0] * sim.experimentDuration
 
     finally:
         plot.update()
@@ -147,29 +149,6 @@ def process_csv_upload(content: BinaryIO): # -> list:
 
     print(powerModesInput)
     #return convert_power_modes(powerModesObjList)
-
-
-def convert_power_modes(parsed_list):
-    """Convert parsed PowerModes list into declarative powerModes structure."""
-    powerModes = []
-
-    for entry in parsed_list:
-        # RECHARGE case
-        if 'RECHARGE' in entry.submodules:
-            powerModes.append("BatteryCell.RECHARGE")
-            continue
-
-        # Build submodule→mode mapping
-        mapping = {}
-        for name, mode_value in entry.submodules.items():
-            sub = submodules_map[name]
-            mapping[sub] = Consumption.Mode(mode_value)
-
-        # Append dict + duration
-        powerModes.append(mapping)
-        powerModes.append(f"{entry.duration} * Simulation.ONE_SECOND")
-
-    return powerModes
 
 
 def save_data(sim: Simulation) -> None:
@@ -293,7 +272,7 @@ def GUI(sim: Simulation) -> None:
 
 
     with ui.row().classes('justify-center w-full'):
-        ui.upload(label="Upload PowerModes.csv file to define submodules that consume power in this simulation", on_upload=lambda e: process_csv_upload(e.content), auto_upload=True, on_rejected=lambda: ui.notify('File Rejected, select and upload the "PowerModes.csv" file only!')).props('accept=PowerModes.csv color=orange').classes('w-1/2')
+        ui.upload(label="Upload PowerModes.csv file to define power consuming submodules and recharge cycles in this simulation", on_upload=lambda e: process_csv_upload(e.content), auto_upload=True, on_rejected=lambda: ui.notify('File Rejected, select and upload the "PowerModes.csv" file only!')).props('accept=PowerModes.csv color=orange').classes('w-1/2')
 
         ui.button("Confirm Parameters, Reset Graph, & Reset Error Messages ", icon='settings', on_click= lambda: set_sim_params(sim)).props('color=orange').classes('justify-center w-full')
         ui.space().classes('justify-center w-full')
@@ -324,7 +303,7 @@ if __name__ in {"__main__", "__mp_main__"}:
                    cpu: Consumption.AVG_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
                   {motor: Consumption.MIN_POWER_DRAW_MODE,
                    cpu: Consumption.MIN_POWER_DRAW_MODE}, 1200 * Simulation.ONE_SECOND,
-                  {BatteryCell.RECHARGE: 50.0},            400 * Simulation.ONE_SECOND]
+                  {BatteryCell.RECHARGE: 69.0},           400 * Simulation.ONE_SECOND]
 
     batteryPack = set_battery_pack_parameters(float(voltageInput), float(energyInput), int(cRatingInput), str(chemistryInput), list(packConfigInput))
     sim = Simulation(submodules, batteryPack, powerModes)

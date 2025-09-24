@@ -2,7 +2,6 @@
 
 # Standard libraries
 from dataclasses import dataclass, field
-from typing import Dict
 import csv
 
 # Internal libraries
@@ -12,7 +11,7 @@ from Power.Consumption import Consumption
 
 @dataclass
 class PowerModes:
-    submodules: Dict[str, int] = field(default_factory=dict)
+    submodules: dict[str, int] = field(default_factory=dict)
     duration : int = Simulation.ONE_SECOND
 
     def __str__(self) -> str:

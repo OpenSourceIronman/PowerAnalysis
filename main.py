@@ -18,7 +18,7 @@ from Power.BatteryPack import BatteryPack
 DEBUG_STATEMENTS_ON = False
 
 voltageInput = '3.65'
-energyInput = '5'
+energyInput = '5.0'
 cRatingInput = '10'
 chemistryInput = BatteryCell.LI_FE_P_O4
 packConfigInput = ['1S', '1P']
@@ -55,13 +55,13 @@ def set_battery_pack_parameters(voltageInput: float, energyInput: float, cRating
     return batteryPack
 
 
-def run_sim(sim: Simulation) -> None:
+def run_sim(sim: Simulation, plot) -> None:
     """ Run simulation defined by GUI inputs and power modes defined in main.py main() function, and then update the graphical plot.
 
     Args:
         sim (Simulation): The simulation object to run.
     """
-    global plot, efficiencyInput
+    global efficiencyInput
 
     try:
         plot.figure['data'][0]['y'] = sim.run(sim.experimentDuration, int(efficiencyInput))
@@ -75,13 +75,13 @@ def run_sim(sim: Simulation) -> None:
         plot.update()
 
 
-def set_sim_params(sim: Simulation) -> None:
+def set_sim_params(sim: Simulation, plot) -> None:
     """ Set simulation parameters based on GUI inputs, and determine if the values are valid before running the simulation.
 
     Args:
         sim (Simulation): The Simulation.py object to set & check parameters for.
     """
-    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfig, efficiencyInput, errorLabel
+    global chemistryInput, voltageInput, energyInput, cRatingInput, packConfigInput, efficiencyInput, errorLabel
 
     # Toggle error message off at start of parameter check
     if errorLabel.visible:
@@ -90,7 +90,7 @@ def set_sim_params(sim: Simulation) -> None:
     try:
         sim.initialize_data(float(voltageInput))
         sim.valid_dc_dc_voltage_regulator_efficiency(int(efficiencyInput))
-        sim.generator = set_battery_pack_parameters(float(voltageInput), float(energyInput), int(cRatingInput), str(chemistryInput), packConfig)
+        sim.generator = set_battery_pack_parameters(float(voltageInput), float(energyInput), int(cRatingInput), str(chemistryInput), packConfigInput)
         plot.figure['data'][0]['y'] = sim.batteryPackPercentageLog
 
     except ValueError as e:
@@ -175,12 +175,12 @@ def update_pack_config(newValue: str) -> None:
     Args:
         newValue (str): The new serial or parallel value to update
     """
-    global packConfig
+    global packConfigInput
 
     if "S" in newValue.upper():
-        packConfig[0] = newValue
+        packConfigInput[0] = newValue
     elif "P" in newValue.upper():
-        packConfig[1] = newValue
+        packConfigInput[1] = newValue
     else:
         raise ValueError("DEV ERRROR: Invalid GUI input for pack configuration, check GUI() function.")
 
@@ -194,7 +194,7 @@ def GUI(sim: Simulation) -> None:
     Args:
         sim (Simulation): Data to display in the GUI.
     """
-    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfig, efficiencyInput, errorLabel
+    global plot, chemistryInput, voltageInput, energyInput, cRatingInput, packConfigInput, efficiencyInput, errorLabel
 
     fig = {
         'data': [
@@ -236,7 +236,7 @@ def GUI(sim: Simulation) -> None:
         'tickvals': list(range(0, int(BatteryCell.MAX_STATE_OF_CHARGE + 1), 10)),
     })
 
-    plot = ui.plotly(fig).classes('w-full h-100')
+    plot = ui.plotly(fig).classes('w-full h-[500px] relative z-0')
 
     with ui.dialog() as dialog, ui.card().classes("w-max"):#.classes("w-[900px] max-w-[95%]"):  # 👈 make dialog wider:
         ui.label("Example .csv file structure").classes("text-xl font-bold")
@@ -253,18 +253,18 @@ def GUI(sim: Simulation) -> None:
 
         sDropdown = ui.select(["1S", "2S", "3S", "4S", "5S", "6S"], value="1S",  on_change=lambda e: update_pack_config(e.value))
         pDropdown = ui.select(["1P", "2P", "3P", "4P", "5P", "6P"], value="1P",  on_change=lambda e: update_pack_config(e.value))
-        packConfig = [sDropdown.value, pDropdown.value]
+        packConfigInput = [sDropdown.value, pDropdown.value]
 
 
-    with ui.row().classes('justify-center w-full'):
+    with ui.row().classes('justify-center w-full gap-4 items-center'):
         ui.upload(label="Upload PowerModes.csv file to define power consuming submodules and recharge cycles in this simulation", on_upload=lambda e: process_csv_upload(e.content), auto_upload=True, on_rejected=lambda: ui.notify('File Rejected, select and upload the "PowerModes.csv" file only!')).props('accept=PowerModes.csv color=orange').classes('w-1/2')
 
-        ui.button("Confirm Parameters, Reset Graph, & Reset Error Messages ", icon='settings', on_click= lambda: set_sim_params(sim)).props('color=orange').classes('justify-center w-full')
+        ui.button("Confirm Parameters, Reset Graph, & Reset Error Messages ", icon='settings', on_click= lambda: set_sim_params(sim, plot)).props('color=orange').classes('justify-center w-full')
         ui.space().classes('justify-center w-full')
-        ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim)).props('color=green').classes('justify-center w-full')
+        ui.button("Run Simulation", icon='start', on_click= lambda: run_sim(sim, plot)).props('color=green').classes('justify-center w-full')
         ui.space().classes('justify-center w-full')
         ui.button("Save Simulation to SQLite Database", icon='save', on_click= lambda: save_data(sim)).props('color=blue').classes('justify-center w-full')
-        ui.space().classes('justify-center w-full')
+        #ui.space().classes('justify-center w-full')
 
         redLabelStyle = Tailwind().text_color('red-600').font_weight('bold')
         errorLabel = ui.label('').classes('text-center w-full text-lg')
@@ -272,7 +272,7 @@ def GUI(sim: Simulation) -> None:
         redLabelStyle.apply(errorLabel)
 
         ui.space().classes('justify-center w-full')
-        ui.button("Help", icon='help',  on_click=dialog.open).props('color=red').classes('w-1/4 h-14')
+        ui.button("Help", icon='help', on_click=dialog.open).props('color=red').classes('w-1/4 h-14')
 
 
 if __name__ in {"__main__", "__mp_main__"}:

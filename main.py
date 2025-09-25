@@ -6,10 +6,6 @@ from typing import BinaryIO
 from datetime import datetime
 from nicegui import Tailwind, ui
 
-# TODO For custom Icons on MacOS Dock
-from AppKit import NSApplication, NSApplicationActivationPolicyRegular, NSImage
-import os
-
 # Internal libraries
 from Simulation import Simulation
 from PowerModes import PowerModes
@@ -38,17 +34,6 @@ Duration, Name #1, Power Draw Mode #1, ... , ..., Name #N, Power Draw Mode #N
 
 800, RECHARGE, 99
 """
-
-def set_app_dock_icon():
-    #https://pypi.org/project/atomac/
-    # Get or create the shared NSApplication instance
-    app = NSApplication.sharedApplication()
-    app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
-
-    icon_path = os.path.expanduser('~/Users/earth/Pictures/StrongBoxLogo.png')  # change to your icon path
-    if os.path.exists(icon_path):
-        img = NSImage.alloc().initWithContentsOfFile_(icon_path)
-        app.setApplicationIconImage_(img)
 
 
 def set_battery_pack_parameters(voltageInput: float, energyInput: float, cRatingInput: int, CHEMISTRY_INPUT: str, packConfigInput: list) -> BatteryPack:

@@ -25,6 +25,8 @@ packConfigInput = ['1S', '1P']
 efficiencyInput = '95'
 powerModesInput = []
 
+#errorLabel = ""
+
 csvHelp ="""
 Duration, Name #1, Power Draw Mode #1, ... , ..., Name #N, Power Draw Mode #N
 
